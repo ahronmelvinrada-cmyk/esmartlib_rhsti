@@ -1,12 +1,7 @@
--- eSmartlib RHSTI - database schema
+-- eSmartlib RHSTI - schema para sa CLOUD MySQL (Render/Aiven/TiDB/Railway)
+-- Walang CREATE DATABASE/USE: piliin muna ang database mo sa SQL client, saka i-run ito.
 -- I-import sa phpMyAdmin (Import tab) o gamit ang MySQL console.
 -- Ligtas i-run ulit: hindi nito buburahin ang kasalukuyang data.
-
-CREATE DATABASE IF NOT EXISTS esmartlib_rhsti
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE esmartlib_rhsti;
 
 SET NAMES utf8mb4;
 
