@@ -1,6 +1,6 @@
 <?php
-// IMPORTANT: Walang kahit anong espasyo, blank line, o BOM bago ang "<?php" sa itaas.
-// Walang closing "?>" sa dulo ng file na ito (sinasadya, para walang stray whitespace).
+// IMPORTANT: Walang kahit anong espasyo, blank line, o BOM bago ang opening tag sa itaas.
+// Walang closing tag sa dulo ng file na ito (sinasadya, para walang stray whitespace).
 
 declare(strict_types=1);
 
@@ -57,9 +57,10 @@ if (is_file($localFile)) {
     }
 }
 
-$host     = $local['host'] ?? (getenv('DB_HOST') ?: 'localhost');
+// Defaults ay para sa XAMPP: root, walang password, database na esmartlib_rhsti
+$host     = $local['host'] ?? (getenv('DB_HOST') ?: '127.0.0.1');
 $port     = $local['port'] ?? (getenv('DB_PORT') ?: '3306');
-$dbname   = $local['name'] ?? (getenv('DB_NAME') ?: 'database');
+$dbname   = $local['name'] ?? (getenv('DB_NAME') ?: 'esmartlib_rhsti');
 $username = $local['user'] ?? (getenv('DB_USER') ?: 'root');
 $password = $local['pass'] ?? (getenv('DB_PASSWORD') ?: '');
 
