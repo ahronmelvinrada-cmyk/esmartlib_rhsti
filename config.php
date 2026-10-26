@@ -64,16 +64,35 @@ $dbname   = $local['name'] ?? (getenv('DB_NAME') ?: 'esmartlib_rhsti');
 $username = $local['user'] ?? (getenv('DB_USER') ?: 'root');
 $password = $local['pass'] ?? (getenv('DB_PASSWORD') ?: '');
 
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES   => false,
+    PDO::ATTR_TIMEOUT            => 10,
+];
+
+// SSL para sa cloud MySQL (Aiven, TiDB Cloud, Railway, atbp.)
+// Sa Render, i-set ang DB_SSL=1. Opsyonal: DB_SSL_CA = path ng CA certificate.
+$useSsl = $local['ssl'] ?? getenv('DB_SSL');
+if ($useSsl && !in_array(strtolower((string)$useSsl), ['0', 'false', 'off', 'no'], true)) {
+    if (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+        $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+    }
+    $caFile = $local['ssl_ca'] ?? getenv('DB_SSL_CA');
+    if ($caFile && defined('PDO::MYSQL_ATTR_SSL_CA')) {
+        $options[PDO::MYSQL_ATTR_SSL_CA] = $caFile;
+        if (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+        }
+    }
+}
+
 try {
     $pdo = new PDO(
         "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4",
         $username,
         $password,
-        [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
-        ]
+        $options
     );
 } catch (PDOException $e) {
     // Ang totoong dahilan ay nasa error log, hindi sa browser
