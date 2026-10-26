@@ -1,18 +1,67 @@
-
 <?php
-session_start();
+// IMPORTANT: Walang kahit anong espasyo, blank line, o BOM bago ang "<?php" sa itaas.
+// Walang closing "?>" sa dulo ng file na ito (sinasadya, para walang stray whitespace).
+
+declare(strict_types=1);
+
+// Huwag ipakita ang errors sa browser (mapupunta sa log); pigilan din ang "headers already sent"
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
+// I-buffer ang output para hindi masira ang header()/session kahit may stray output
+if (ob_get_level() === 0) {
+    ob_start();
+}
+
+// Session (isang beses lang, may secure na cookie settings)
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => !empty($_SERVER['HTTPS']),
+    ]);
+    session_start();
+}
+
 date_default_timezone_set('Asia/Manila');
 
-const LOAN_DAYS = 7;
-const MAX_LOANS = 3;
+const LOAN_DAYS     = 7;
+const MAX_LOANS     = 3;
 const SCAN_COOLDOWN = 10;
 
-// Database configuration
-$host = getenv('DB_HOST') ?: 'localhost';
-$dbname = getenv('DB_NAME') ?: 'database';
-$username = getenv('DB_USER') ?: 'root';
-$password = getenv('DB_PASSWORD') ?: '';
-$port = getenv('DB_PORT') ?: '3306';
+/**
+ * Database configuration
+ * Priority: 1) config.local.php  2) environment variables  3) defaults
+ *
+ * Gumawa ng file na config.local.php (katabi nito) para siguradong gumagana
+ * kahit hindi umaabot ang getenv() sa Apache/PHP-FPM:
+ *
+ * <?php
+ * return [
+ *     'host' => 'localhost',
+ *     'port' => '3306',
+ *     'name' => 'pangalan_ng_database',
+ *     'user' => 'db_user',
+ *     'pass' => 'db_password',
+ * ];
+ */
+$local = [];
+$localFile = __DIR__ . '/config.local.php';
+if (is_file($localFile)) {
+    $loaded = require $localFile;
+    if (is_array($loaded)) {
+        $local = $loaded;
+    }
+}
+
+$host     = $local['host'] ?? (getenv('DB_HOST') ?: 'localhost');
+$port     = $local['port'] ?? (getenv('DB_PORT') ?: '3306');
+$dbname   = $local['name'] ?? (getenv('DB_NAME') ?: 'database');
+$username = $local['user'] ?? (getenv('DB_USER') ?: 'root');
+$password = $local['pass'] ?? (getenv('DB_PASSWORD') ?: '');
 
 try {
     $pdo = new PDO(
@@ -20,28 +69,35 @@ try {
         $username,
         $password,
         [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
         ]
     );
 } catch (PDOException $e) {
-    error_log('Database connection failed: ' . $e->getMessage());
+    // Ang totoong dahilan ay nasa error log, hindi sa browser
+    error_log('Database connection failed: ' . $e->getMessage()
+        . " (host={$host}, port={$port}, db={$dbname}, user={$username})");
     http_response_code(500);
     exit('Database connection failed. Please check your database configuration.');
 }
 
-function h($s) {
-    return htmlspecialchars((string)$s, ENT_QUOTES);
+function h($s): string
+{
+    return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-function auth($roles = ['admin', 'librarian']) {
+function auth(array $roles = ['admin', 'librarian']): void
+{
     if (empty($_SESSION['u'])) {
         header('Location: login.php');
         exit;
     }
 
-    if (!in_array($_SESSION['u']['role'], $roles, true)) {
-        if ($_SESSION['u']['role'] == 'student') {
+    $role = $_SESSION['u']['role'] ?? '';
+
+    if (!in_array($role, $roles, true)) {
+        if ($role === 'student') {
             header('Location: student.php');
             exit;
         }
@@ -51,20 +107,21 @@ function auth($roles = ['admin', 'librarian']) {
     }
 }
 
-function head($title) {
-    $p = basename($_SERVER['PHP_SELF']);
+function head(string $title): void
+{
+    $p    = basename($_SERVER['PHP_SELF']);
     $role = $_SESSION['u']['role'] ?? '';
 
     $nav = [
-        'index.php' => 'Dashboard',
-        'students.php' => 'Students',
-        'books.php' => 'Books',
-        'borrow.php' => 'Borrow',
-        'return.php' => 'Return',
-        'attendance.php' => 'Time-In / Time-Out'
+        'index.php'      => 'Dashboard',
+        'students.php'   => 'Students',
+        'books.php'      => 'Books',
+        'borrow.php'     => 'Borrow',
+        'return.php'     => 'Return',
+        'attendance.php' => 'Time-In / Time-Out',
     ];
 
-    if ($role == 'student') {
+    if ($role === 'student') {
         $nav = ['student.php' => 'My Dashboard'];
     }
 
@@ -80,7 +137,7 @@ function head($title) {
     <nav>';
 
     foreach ($nav as $f => $l) {
-        echo '<a href="' . h($f) . '"' . ($p == $f ? ' class="on"' : '') . '>' . h($l) . '</a>';
+        echo '<a href="' . h($f) . '"' . ($p === $f ? ' class="on"' : '') . '>' . h($l) . '</a>';
     }
 
     echo '</nav><div class="who">
@@ -90,6 +147,7 @@ function head($title) {
     </div></aside><main><h1>' . h($title) . '</h1>';
 }
 
-function foot($scripts = '') {
+function foot(string $scripts = ''): void
+{
     echo '</main></div><script src="assets/app.js"></script>' . $scripts . '</body></html>';
 }
