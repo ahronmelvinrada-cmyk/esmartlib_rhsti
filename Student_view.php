@@ -1,4 +1,4 @@
-<?php require 'config.php';require 'ui2026.php';auth(['admin','librarian']);
+<?php require 'config.php';require 'Ui2026.PHP';auth(['admin','librarian']);
 photo_col($pdo);
 $id=(int)($_GET['id']??0);
 $isAdmin=($_SESSION['u']['role']??'')==='admin';
@@ -24,7 +24,7 @@ if($st&&$isAdmin&&$_SERVER['REQUEST_METHOD']==='POST'){
     $msg='Password reset. The student can now sign in with their Student ID.';
   }elseif(isset($_POST['photo_rm'])){photo_remove($pdo,$id);$msg='Photo removed.';}
   elseif(isset($_POST['photo_up'])){$e=photo_save($pdo,$id,$_FILES['photo']??[]);$ok=!$e;$msg=$e?:'Photo updated.';}
-  if($msg){$_SESSION['flash']=[$ok,$msg];header('Location: student_view.php?id='.$id);exit;}
+  if($msg){$_SESSION['flash']=[$ok,$msg];header('Location: Student_view.php?id='.$id);exit;}
 }
 
 head('Student Profile');ui_css();
@@ -136,6 +136,8 @@ $genders=['Male','Female'];if($st['gender']!==''&&!in_array($st['gender'],$gende
   <div class="qcap"><div class="qr" data-code="STU:<?=h($st['student_no'])?>"></div><small>Student QR code</small></div>
 </div>
 
+<?php library_pass($st,setting($pdo,'library_logo','assets/rhsti-school-logo.jpg'),setting($pdo,'library_name','eSmartlib'),setting($pdo,'school_name','RHSTI Library')); ?>
+
 <!-- Stats -->
 <div class="sgrid">
   <div class="sc t1"><div class="ico"><?=ic('book')?></div><span>Books borrowed now</span><b><?=count($cur)?>/<?=MAX_LOANS?></b>
@@ -158,7 +160,7 @@ $genders=['Male','Female'];if($st['gender']!==''&&!in_array($st['gender'],$gende
     <label class="fl"><span>Section</span><input name="section" value="<?=h($st['section'])?>" <?=$d?>></label>
   </div>
   <?php if($isAdmin):?>
-    <div class="fact"><button name="save" value="1"><?=ic('plus')?>Save changes</button><a class="link" href="student_view.php?id=<?=$id?>">Discard</a></div>
+    <div class="fact"><button name="save" value="1"><?=ic('plus')?>Save changes</button><a class="link" href="Student_view.php?id=<?=$id?>">Discard</a></div>
     <p class="hint">Changing the Student ID also changes the student&rsquo;s login username and QR code. Reprint their QR if you change it.</p>
   <?php endif;?>
 </form>

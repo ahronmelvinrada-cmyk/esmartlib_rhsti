@@ -1,6 +1,6 @@
 <?php
 /* Shared 2026 UI kit: icons + styles for inner pages.
-   Usage: require 'ui2026.php' (after config.php), then call ui_css() right after head(...). */
+   Usage: require 'Ui2026.PHP' (after config.php), then call ui_css() right after head(...). */
 
 function ic($k){
     static $p = [
@@ -99,6 +99,34 @@ function avatar($r,$size=''){
     $t=trim($r['name']??'?'); $ini=function_exists('mb_substr')?mb_strtoupper(mb_substr($t,0,1)):strtoupper(substr($t,0,1));
     return '<span class="pav '.$size.'">'.h($ini).'</span>';
 }
+function library_pass($student,$logoPath='assets/rhsti-school-logo.jpg',$libraryName='eSmartlib',$schoolName='RHSTI Library'){
+  $logoAllowed=$logoPath==='assets/rhsti-school-logo.jpg'||(strpos($logoPath,'uploads/library/')===0&&strpos($logoPath,'..')===false);
+  $logoPathOk=$logoAllowed&&is_file(__DIR__.'/'.$logoPath);
+?>
+<div class="library-pass-print">
+  <div class="pass-actions noprint">
+    <div><strong>Library pass</strong><small>Print a wallet-size pass for this student.</small></div>
+    <button type="button" onclick="printLibraryPass()"><?=ic('print')?>Print Library Pass</button>
+  </div>
+  <article class="library-pass" aria-label="Student library pass">
+    <div class="pass-top">
+      <span class="pass-brand"><?php if($logoPathOk):?><img src="<?=h($logoPath)?>?v=<?=filemtime(__DIR__.'/'.$logoPath)?>" alt=""><?php else:?><i>e</i><?php endif;?><span><?=h($libraryName)?><small><?=h($schoolName)?></small></span></span>
+      <span class="pass-tag">LIBRARY PASS</span>
+    </div>
+    <div class="pass-content">
+      <?=avatar($student,'pass-photo')?>
+      <div class="pass-details">
+        <small>STUDENT NAME</small>
+        <h2><?=h($student['name'])?></h2>
+        <span class="pass-id-label">STUDENT ID</span>
+        <strong class="pass-id"><?=h($student['student_no'])?></strong>
+      </div>
+      <div class="qr pass-qr" data-code="STU:<?=h($student['student_no'])?>"></div>
+    </div>
+    <div class="pass-bottom"><span>STUDENT IDENTIFICATION</span><span>SCAN FOR LIBRARY ACCESS</span></div>
+  </article>
+</div>
+<?php }
 
 /* Sidebar behaviour only (avatar + mobile hamburger). Sidebar CSS lives in style.css. */
 function ui_side(){ static $done=false; if($done) return; $done=true; ?>
@@ -108,14 +136,35 @@ function ui_side(){ static $done=false; if($done) return; $done=true; ?>
   var w=a.querySelector('.who');
   if(w && !w.querySelector('.av2')){
     var d=document.createElement('div'); d.className='av2';
-    d.textContent=(w.textContent||'').trim().charAt(0).toUpperCase();
+    d.setAttribute('aria-hidden','true');
+    var username=w.querySelector('.who-info b');
+    d.textContent=(username?username.textContent:'?').trim().charAt(0).toUpperCase();
     w.insertBefore(d,w.firstChild);
   }
-  if(!a.querySelector('.burger')){
+  if(!a.parentElement.classList.contains('student-app')&&!a.querySelector('.burger')){
     var b=document.createElement('button'); b.type='button'; b.className='burger';
-    b.setAttribute('aria-label','Menu'); b.innerHTML='<span></span><span></span><span></span>';
+    b.setAttribute('aria-label','Menu'); b.setAttribute('aria-expanded','false');
+    b.innerHTML='<span></span><span></span><span></span>';
     var br=a.querySelector('.brand'); a.insertBefore(b,br?br.nextSibling:a.firstChild);
-    b.onclick=function(){a.classList.toggle('open');};
+    var nav=a.querySelector('nav');
+    if(nav&&!nav.id)nav.id='site-navigation';
+    if(nav)b.setAttribute('aria-controls',nav.id);
+    b.onclick=function(){
+      var open=a.classList.toggle('open');
+      b.setAttribute('aria-expanded',open?'true':'false');
+    };
+    if(nav)nav.addEventListener('click',function(e){
+      if(e.target.closest('a')){
+        a.classList.remove('open');
+        b.setAttribute('aria-expanded','false');
+      }
+    });
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Escape'){
+        a.classList.remove('open');
+        b.setAttribute('aria-expanded','false');
+      }
+    });
   }
 })();
 </script>
@@ -168,7 +217,12 @@ function ui_css(){ ui_side(); ?>
 .pg .sw{position:relative;flex:1 1 260px}
 .pg .sw .ic{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--mute);pointer-events:none}
 .pg .sw input{padding-left:44px}
+.pg .section-filter{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--mute);font-size:12px;font-weight:700;white-space:nowrap}
+.pg .section-filter select{min-width:132px;margin:0;padding:10px 28px 10px 4px;border:0;background:transparent;color:var(--ink);font-size:13px;font-weight:700}
+.pg .section-filter select:focus{outline:0}
+.pg .section-filter:focus-within{outline:3px solid #b7dcc4;border-color:var(--g)}
 .pg .badge{display:inline-block;font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;background:#eef3ef;color:var(--mute)}
+@media(max-width:640px){.pg .bar>*{flex:1 1 100%}.pg .bar .sw{flex-basis:100%}.pg .section-filter{justify-content:space-between;min-height:44px}.pg .section-filter select{flex:1;text-align:right}.pg .bar .badge{flex:0 0 auto}}
 
 /* Avatars / profile photo */
 .pg .pav{width:48px;height:48px;border-radius:50%;object-fit:cover;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#2a9d5c,var(--g));color:#fff;font-weight:800;font-size:18px;border:3px solid #fff;box-shadow:0 8px 18px -8px rgba(15,61,38,.55)}
@@ -225,8 +279,7 @@ function ui_css(){ ui_side(); ?>
 .pg .big{height:68px;max-width:none;font-size:20px;font-weight:600;padding:0 20px 0 58px;border:2px solid var(--g);border-radius:18px;background:#f8fcf9}
 .pg .big:focus{box-shadow:0 0 0 6px rgba(31,122,70,.14)}
 .pg .scan .fact{justify-content:center}
-.pg #reader{max-width:440px;margin:16px auto 0;border-radius:18px;overflow:hidden}
-.pg #reader:empty{display:none}
+.pg #reader{width:100%;max-width:440px;min-height:0;margin:16px auto 0;border-radius:18px;overflow:hidden;background:#101713}
 
 /* Tables */
 .pg .tw{overflow-x:auto;margin:0 -6px;padding:0 6px}
@@ -243,13 +296,76 @@ function ui_css(){ ui_side(); ?>
 .pg .pill.out{background:#eef3ef;color:var(--mute)}
 .pg .muted{color:var(--mute)}
 
+.pg .library-pass-print{display:grid;gap:10px;justify-items:start}
+.pg .pass-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;max-width:680px}
+.pg .pass-actions strong,.pg .pass-actions small{display:block}
+.pg .pass-actions strong{font-size:15px}
+.pg .pass-actions small{color:var(--mute);font-size:12px}
+.pg .pass-actions button{display:inline-flex;align-items:center;gap:8px;margin:0}
+.pg .library-pass{position:relative;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;width:min(100%,680px);aspect-ratio:1.586;padding:24px 28px;border:1px solid #cde3d2;border-radius:22px;background:radial-gradient(ellipse at 8% 12%,rgba(77,177,111,.22),transparent 34%),radial-gradient(ellipse at 100% 58%,rgba(139,205,158,.24),transparent 35%),linear-gradient(155deg,#e7f4e9 0%,#f2f7f1 42%,#edf5ee 100%);box-shadow:0 16px 35px -22px #1f7a4640;color:#0f3d26;isolation:isolate}
+.pg .library-pass::before,.pg .library-pass::after{position:absolute;z-index:-1;pointer-events:none;content:""}
+.pg .library-pass::before{inset:0;opacity:.035;background-image:linear-gradient(#0f3d26 1px,transparent 1px),linear-gradient(90deg,#0f3d26 1px,transparent 1px);background-size:22px 22px;-webkit-mask-image:radial-gradient(80% 80% at 30% 30%,#000,transparent);mask-image:radial-gradient(80% 80% at 30% 30%,#000,transparent)}
+.pg .library-pass::after{right:17%;bottom:-95px;width:250px;height:250px;border:1px solid rgba(31,122,70,.14);border-radius:50%;box-shadow:0 0 0 20px rgba(31,122,70,.035),0 0 0 42px rgba(31,122,70,.025)}
+.pg .pass-top,.pg .pass-content,.pg .pass-brand{display:flex;align-items:center}
+.pg .pass-top{justify-content:space-between;gap:12px}
+.pg .pass-brand{gap:10px;font-size:15px;font-weight:800;line-height:1.1}
+.pg .pass-brand img{display:block;width:38px;height:38px;object-fit:contain;border-radius:10px;background:#fff;padding:3px}
+.pg .pass-brand i{display:grid;width:38px;height:38px;place-items:center;border-radius:12px;background:linear-gradient(145deg,#2a9d5c,#17653a);color:#fff;font-size:24px;font-style:normal;box-shadow:0 8px 18px -8px #1f7a4680}
+.pg .pass-brand small{display:block;margin-top:4px;color:#557663;font-size:10px;font-weight:600}
+.pg .pass-tag{padding:7px 11px;border:1px solid rgba(31,122,70,.24);border-radius:999px;background:rgba(255,255,255,.55);color:#17653a;font-size:9px;font-weight:800;letter-spacing:.11em}
+.pg .pass-content{flex:1;gap:18px;min-height:0;padding:14px 0}
+.pg .library-pass .pass-photo{width:82px;height:82px;border:3px solid #ffffffcc;background:#d5e9db;color:#145b36;font-size:30px;box-shadow:0 8px 18px #052d1c55}
+.pg .library-pass img.pass-photo{display:block}
+.pg .pass-details{min-width:0;flex:1}
+.pg .pass-details>small,.pg .pass-id-label{display:block;color:#557663;font-size:9px;font-weight:800;letter-spacing:.12em}
+.pg .pass-details h2{overflow:hidden;margin:5px 0 12px;font-size:clamp(16px,3vw,24px);font-weight:800;line-height:1.15;text-overflow:ellipsis}
+.pg .pass-id-label{font-size:8px}
+.pg .pass-id{display:block;margin-top:3px;font-size:15px;font-variant-numeric:tabular-nums;letter-spacing:.05em}
+.pg .library-pass .pass-qr{display:grid;flex:none;width:112px;height:112px;place-items:center;margin:0;padding:7px;border:0;border-radius:14px;background:#fff}
+.pg .pass-qr img,.pg .pass-qr canvas{display:block;width:98px!important;height:98px!important;border-radius:4px}
+.pg .pass-bottom{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid rgba(31,122,70,.2);color:#557663;font-size:8px;font-weight:700;letter-spacing:.1em}
+@media(max-width:520px){.pg .pass-actions{align-items:stretch;flex-direction:column;gap:9px}.pg .pass-actions button{justify-content:center;min-height:44px}.pg .library-pass{padding:16px;border-radius:17px}.pg .pass-content{gap:10px}.pg .library-pass .pass-photo{width:58px;height:58px;font-size:22px}.pg .library-pass .pass-qr{width:82px;height:82px;padding:5px}.pg .pass-qr img,.pg .pass-qr canvas{width:72px!important;height:72px!important}.pg .pass-brand{font-size:13px}.pg .pass-brand i{width:32px;height:32px;font-size:20px}.pg .pass-tag{padding:5px 7px;font-size:7px}.pg .pass-details h2{font-size:clamp(13px,3.8vw,19px)}.pg .pass-id{font-size:12px}.pg .pass-bottom{font-size:6px}}
+
 @media(max-width:640px){.pg .card{padding:16px}.pg .big{height:60px;font-size:17px}}
 @media print{
-  .pg{display:block}
-  .pg .card,.pg .qrcard{box-shadow:none!important;transform:none!important;border:1px solid #ccc;border-radius:10px}
-  .pg .qrgrid{grid-template-columns:repeat(4,1fr);gap:10px}
-  .pg .meter,.pg .chip{border:1px solid #ccc;background:#fff}
+  body.printing-library-pass *{visibility:hidden!important}
+  body.printing-library-pass .app,
+  body.printing-library-pass main,
+  body.printing-library-pass .pg,
+  body.printing-library-pass #pass,
+  body.printing-library-pass .library-pass-print{display:block!important}
+  body.printing-library-pass .library-pass{display:flex!important}
+  body.printing-library-pass .library-pass-print,
+  body.printing-library-pass .library-pass-print *{visibility:visible!important}
+  body.printing-library-pass #pass{width:auto!important;margin:0!important;padding:0!important}
+  body.printing-library-pass .library-pass-print{position:fixed!important;top:0!important;left:0!important;display:block!important;width:auto!important;margin:0!important;padding:0!important}
+  .pg .pass-actions{display:none!important}
+  .pg .library-pass{width:3.375in!important;height:2.125in!important;aspect-ratio:auto!important;margin:0!important;padding:.16in .19in!important;border:0!important;border-radius:.12in!important;box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pg .pass-brand{font-size:9pt!important}
+  .pg .pass-brand i{width:.28in!important;height:.28in!important;font-size:17pt!important}
+  .pg .pass-brand small{font-size:6pt!important}
+  .pg .pass-tag{padding:4px 7px!important;font-size:5.5pt!important}
+  .pg .pass-content{gap:.12in!important;padding:.08in 0!important}
+  .pg .library-pass .pass-photo{width:.62in!important;height:.62in!important;font-size:21pt!important}
+  .pg .pass-brand img{width:.28in!important;height:.28in!important}
+  .pg .pass-details>small,.pg .pass-id-label{font-size:5.5pt!important}
+  .pg .pass-details h2{margin:3px 0 8px!important;font-size:12pt!important}
+  .pg .pass-id{font-size:9pt!important}
+  .pg .library-pass .pass-qr{width:.83in!important;height:.83in!important;padding:.05in!important}
+  .pg .pass-qr img,.pg .pass-qr canvas{width:.73in!important;height:.73in!important}
+  .pg .pass-bottom{padding-top:5px!important;font-size:5pt!important}
+  body:not(.printing-library-pass) .pg{display:block}
+  body:not(.printing-library-pass) .pg .card,body:not(.printing-library-pass) .pg .qrcard{box-shadow:none!important;transform:none!important;border:1px solid #ccc;border-radius:10px}
+  body:not(.printing-library-pass) .pg .qrgrid{grid-template-columns:repeat(4,1fr);gap:10px}
+  body:not(.printing-library-pass) .pg .meter,body:not(.printing-library-pass) .pg .chip{border:1px solid #ccc;background:#fff}
 }
 @media(prefers-reduced-motion:reduce){.pg *{animation:none!important;transition:none!important}}
 </style>
+<script>
+window.printLibraryPass=function(){
+  document.body.classList.add('printing-library-pass');
+  requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();});});
+};
+window.addEventListener('afterprint',function(){document.body.classList.remove('printing-library-pass');});
+</script>
 <?php }

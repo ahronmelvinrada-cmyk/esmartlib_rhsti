@@ -1,15 +1,33 @@
 <?php
 require 'config.php';
-require 'ui2026.php';
+require 'Ui2026.PHP';
 auth();
+
+if (isset($_GET['stats'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    $stats = $pdo->query("SELECT
+        (SELECT COUNT(*) FROM books) AS book_titles,
+        (SELECT COALESCE(SUM(quantity),0) FROM books) AS book_copies,
+        (SELECT COUNT(*) FROM students) AS students,
+        (SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL) AS books_out,
+        (SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()) AS overdue,
+        (SELECT COUNT(*) FROM borrowings WHERE DATE(borrowed_at) = CURDATE() OR DATE(returned_at) = CURDATE()) AS scanned_today,
+        (SELECT COUNT(*) FROM attendance WHERE DATE(time_in) = CURDATE()) AS visits_today")->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(array_map('intval', $stats));
+    exit;
+}
+
 head('Dashboard');
 ui_side();
 
 $q = fn($sql) => $pdo->query($sql)->fetchColumn();
+$bookTitles = (int)$q("SELECT COUNT(*) FROM books");
+$bookCopies = (int)$q("SELECT COALESCE(SUM(quantity),0) FROM books");
 
 /* ---------- Stat cards: label => [value, icon, tone] ---------- */
 $c = [
-    'Total Book Assets'             => [$q("SELECT COALESCE(SUM(quantity),0) FROM books"), 'book', 'emerald'],
+    'Book Titles'                   => [$bookTitles, 'book', 'emerald'],
     'Registered Students'           => [$q("SELECT COUNT(*) FROM students"), 'users', 'blue'],
     'Books Out'                     => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL"), 'out', 'amber'],
     'Overdue Alerts'                => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()"), 'alert', 'rose'],
@@ -17,7 +35,7 @@ $c = [
     'Library Visits Today'          => [$q("SELECT COUNT(*) FROM attendance WHERE DATE(time_in) = CURDATE()"), 'door', 'teal'],
 ];
 $sub = [
-    'Total Book Assets'    => 'copies in the collection',
+    'Book Titles'          => 'titles in catalog · '.$bookCopies.' total copies',
     'Registered Students'  => 'with library access',
     'Books Out'            => 'currently borrowed',
     'Overdue Alerts'       => 'need follow-up',
@@ -60,16 +78,15 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 
 <style>
 .dash{
-  --muted:var(--mute); --surface:#fff;
+  --muted:var(--mute); --surface:var(--card);
   --brand:var(--g); --brand-ink:var(--gd); --radius:20px;
   color:var(--ink); font-feature-settings:"tnum"; display:grid; gap:22px;
 }
 .dash *{box-sizing:border-box}
 
 /* Hero */
-.dash .hero{display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px}
-.dash .hero h1{margin:0; font-size:clamp(26px,3vw,36px); letter-spacing:-.03em; font-weight:800}
-.dash .hero p{margin:4px 0 0; color:var(--muted); font-size:14px}
+.dash .dhero{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:none; border:0; padding:0; box-shadow:none; color:inherit; min-height:0}
+.dash .dhero p{margin:0; color:var(--muted); font-size:14px}
 .dash .live{display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
   background:#ecfdf5; color:var(--brand-ink); font-weight:600; font-size:13px; border:1px solid #bbf7d0}
 .dash .live i{width:8px; height:8px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 0 rgba(16,185,129,.6); animation:ping 2s infinite}
@@ -137,9 +154,8 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 <div class="dash">
 
   <!-- Hero -->
-  <div class="hero">
+  <div class="dhero">
     <div>
-      <h1>Dashboard</h1>
       <p><?= date('l, F j, Y') ?> · Welcome back, here’s what’s happening in the library.</p>
     </div>
     <div class="live"><i></i> System online</div>
@@ -152,7 +168,14 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
         <div class="ico"><?= $svg($ic) ?></div>
         <div>
           <div class="lbl"><?= h($k) ?></div>
-          <div class="num" data-count="<?= (int)$v ?>"><?= h($v) ?></div>
+          <div class="num" data-count="<?= (int)$v ?>" data-stat-key="<?= h([
+              'Book Titles' => 'book_titles',
+              'Registered Students' => 'students',
+              'Books Out' => 'books_out',
+              'Overdue Alerts' => 'overdue',
+              'Scanned Today' => 'scanned_today',
+              'Library Visits Today' => 'visits_today',
+          ][$k]) ?>"<?=$k==='Book Titles'?' data-copy-count="'.$bookCopies.'"':''?>><?= h($v) ?></div>
           <div class="hint"><?= h($sub[$k]) ?></div>
         </div>
       </div>
@@ -166,7 +189,7 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
     <a class="act" href="attendance.php">Time-In / Time-Out <span>→</span></a>
     <a class="act" href="books.php">Add &amp; Manage Books <span>→</span></a>
     <a class="act" href="students.php">Manage Students <span>→</span></a>
-    <?php if(($_SESSION['u']['role'] ?? '') === 'admin'): ?><a class="act" href="settings.php">Settings <span>→</span></a><?php endif; ?>
+    <?php if(($_SESSION['u']['role'] ?? '') === 'admin'): ?><a class="act" href="account.php?tab=settings">Settings <span>→</span></a><?php endif; ?>
   </div>
 
   <!-- Chart -->
@@ -189,7 +212,7 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
       <div class="empty">
         <div class="ok">✓</div>
         <b>All clear!</b>
-        Walang overdue na libro ngayon.
+        No books are overdue today.
       </div>
     <?php else: ?>
       <table class="tbl">
@@ -217,7 +240,7 @@ $chartScript = '
   // Count-up animation sa stat numbers
   document.querySelectorAll("[data-count]").forEach(function(el){
     var end = +el.dataset.count, t0 = performance.now(), dur = 900;
-    if(!end) return;
+    if(!end || document.visibilityState === "hidden") return;
     (function tick(t){
       var p = Math.min((t - t0) / dur, 1), e = 1 - Math.pow(1 - p, 3);
       el.textContent = Math.round(end * e).toLocaleString();
@@ -229,7 +252,7 @@ $chartScript = '
   var g1 = ctx.createLinearGradient(0,0,0,320); g1.addColorStop(0,"#818cf8"); g1.addColorStop(1,"#4f46e5");
   var g2 = ctx.createLinearGradient(0,0,0,320); g2.addColorStop(0,"#34d399"); g2.addColorStop(1,"#059669");
 
-  new Chart(ctx, {
+  var chart = new Chart(ctx, {
     type: "bar",
     data: {
       labels: ' . json_encode($labels) . ',
@@ -248,13 +271,41 @@ $chartScript = '
       scales: {
         x: { grid: { display: false }, border: { display: false }, ticks: { color: "#6b7a72", font: { weight: "600" } } },
         y: { beginAtZero: true, border: { display: false }, grid: { color: "#eef2ef" },
-             ticks: { precision: 0, stepSize: 1, color: "#6b7a72" } }cd C:\xampp\htdocs
+             ticks: { precision: 0, stepSize: 1, color: "#6b7a72" } }
       },
       animation: { duration: 900, easing: "easeOutQuart" }
     }
   });
+  function paint(){
+    var d = document.documentElement.getAttribute("data-esl-theme") === "dark", o = chart.options;
+    o.scales.x.ticks.color = o.scales.y.ticks.color = d ? "#9db3a5" : "#6b7a72";
+    o.scales.y.grid.color = d ? "#223329" : "#eef2ef";
+    o.plugins.legend.labels.color = d ? "#d6e8db" : "#16231b";
+    o.plugins.tooltip.backgroundColor = d ? "#050a07" : "#0f1f17";
+    chart.update("none");
+  }
+  paint(); window.addEventListener("esl-theme", paint);
+  var refreshPending = false;
+  function checkForDashboardUpdates(){
+    if(refreshPending || document.visibilityState === "hidden") return;
+    fetch("index.php?stats=1", {cache:"no-store", credentials:"same-origin"})
+      .then(function(response){
+        if(!response.ok) throw new Error("Dashboard refresh check failed.");
+        return response.json();
+      })
+      .then(function(latest){
+        var changed = Array.from(document.querySelectorAll("[data-stat-key]")).some(function(el){
+          return Number(el.dataset.count) !== Number(latest[el.dataset.statKey]) ||
+            (el.dataset.copyCount !== undefined && Number(el.dataset.copyCount) !== Number(latest.book_copies));
+        });
+        if(changed){refreshPending=true;location.reload();}
+      })
+      .catch(function(error){console.error(error);});
+  }
+  window.addEventListener("pageshow", checkForDashboardUpdates);
+  window.setInterval(checkForDashboardUpdates, 15000);
 })();
 </script>';
 
 foot($chartScript);
-?>  
+?>

@@ -33,10 +33,13 @@ if ($_SESSION['u']['role'] == 'student') {
     out(false, 'Not allowed.');
 }
 
+ensure_book_request_schema($pdo);
+
 $a = $_POST['action'] ?? '';
 $now = date('Y-m-d H:i:s');
 
 if ($a == 'student') {
+    ensure_student_account_status_schema($pdo);
     $s = student($pdo, $_POST['code'] ?? '');
     if (!$s) {
         out(false, 'Student QR not recognized.');
@@ -45,6 +48,10 @@ if ($a == 'student') {
     $n = $pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id = ? AND returned_at IS NULL");
     $n->execute([$s['id']]);
     
+    if ((int)$s['account_active'] !== 1) {
+        out(false, 'Student account is inactive.');
+    }
+
     out(true, 'Student identified.', [
         'student' => $s, 
         'active' => (int)$n->fetchColumn()
@@ -52,44 +59,74 @@ if ($a == 'student') {
 }
 
 if ($a == 'borrow') {
+    ensure_student_account_status_schema($pdo);
     $s = student($pdo, $_POST['student'] ?? '');
-    if (!$s) {
-        out(false, 'Scan the student QR first.');
-    }
-    
+    if (!$s) out(false, 'Scan the student QR first.');
+    if ((int)$s['account_active'] !== 1) out(false, 'Student account is inactive.');
     $b = book($pdo, $_POST['code'] ?? '');
-    if (!$b) {
-        out(false, 'Book QR not recognized.');
-    }
-    
-    if ($b['available'] < 1) {
-        out(false, '"' . $b['title'] . '" has no available copies.');
-    }
-    
-    $c = $pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id = ? AND returned_at IS NULL");
-    $c->execute([$s['id']]);
-    if ($c->fetchColumn() >= MAX_LOANS) {
-        out(false, $s['name'] . ' has reached the limit of ' . MAX_LOANS . ' books.');
-    }
-    
-    $d = $pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id = ? AND book_id = ? AND returned_at IS NULL");
-    $d->execute([$s['id'], $b['id']]);
-    if ($d->fetchColumn()) {
-        out(false, 'Student already borrowed this book.');
-    }
-    
+    if (!$b) out(false, 'Book QR not recognized.');
+
+    $reservation = null;
+    $failure = '';
     $due = date('Y-m-d', strtotime('+' . LOAN_DAYS . ' days'));
-    
-    $pdo->beginTransaction();
-    $pdo->prepare("INSERT INTO borrowings(student_id, book_id, borrowed_at, due_date) VALUES(?, ?, ?, ?)")
-        ->execute([$s['id'], $b['id'], $now, $due]);
-    $pdo->prepare("UPDATE books SET available = available - 1 WHERE id = ?")
-        ->execute([$b['id']]);
-    $pdo->commit();
+    try {
+        $pdo->beginTransaction();
+        $studentLock = $pdo->prepare("SELECT id FROM students WHERE id=? FOR UPDATE");
+        $studentLock->execute([(int)$s['id']]);
+        $bookLock = $pdo->prepare("SELECT * FROM books WHERE id=? FOR UPDATE");
+        $bookLock->execute([(int)$b['id']]);
+        $b = $bookLock->fetch();
+        if (!$b) {
+            $failure = 'Book QR not recognized.';
+        } else {
+            $reservationQuery = $pdo->prepare("SELECT id FROM book_requests WHERE student_id=? AND book_id=? AND status='approved' FOR UPDATE");
+            $reservationQuery->execute([(int)$s['id'], (int)$b['id']]);
+            $reservation = $reservationQuery->fetch();
+
+            $heldQuery = $pdo->prepare("SELECT COUNT(*) FROM book_requests WHERE book_id=? AND status='approved'");
+            $heldQuery->execute([(int)$b['id']]);
+            $held = (int)$heldQuery->fetchColumn();
+            if ((int)$b['available'] < 1 || (!$reservation && (int)$b['available'] - $held < 1)) {
+                $failure = '"' . $b['title'] . '" has no available copies (copies may be reserved).';
+            } else {
+                $count = $pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id=? AND returned_at IS NULL");
+                $count->execute([(int)$s['id']]);
+                if ((int)$count->fetchColumn() >= MAX_LOANS) {
+                    $failure = $s['name'] . ' has reached the limit of ' . MAX_LOANS . ' books.';
+                } else {
+                    $duplicate = $pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id=? AND book_id=? AND returned_at IS NULL");
+                    $duplicate->execute([(int)$s['id'], (int)$b['id']]);
+                    if ((int)$duplicate->fetchColumn()) {
+                        $failure = 'Student already borrowed this book.';
+                    } else {
+                        $pdo->prepare("INSERT INTO borrowings(student_id,book_id,borrowed_at,due_date) VALUES(?,?,?,?)")
+                            ->execute([(int)$s['id'], (int)$b['id'], $now, $due]);
+                        $pdo->prepare("UPDATE books SET available=available-1 WHERE id=?")->execute([(int)$b['id']]);
+                        if ($reservation) {
+                            $pdo->prepare("UPDATE book_requests SET status='fulfilled',reviewed_at=NOW() WHERE id=?")
+                                ->execute([(int)$reservation['id']]);
+                        }
+                    }
+                }
+            }
+        }
+        if ($failure !== '') {
+            $pdo->rollBack();
+            out(false, $failure);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
     
     out(true, 'Borrowed: ' . $b['title'] . ' (due ' . $due . ')', [
         'title' => $b['title'], 
-        'due' => $due
+        'due' => $due,
+        'student_no' => $s['student_no'],
+        'student_name' => $s['name'],
+        'borrowed_display' => date('M j, Y · h:i A', strtotime($now)),
+        'due_display' => date('M j, Y', strtotime($due))
     ]);
 }
 
@@ -124,9 +161,13 @@ if ($a == 'return') {
 }
 
 if ($a == 'attendance') {
+    ensure_student_account_status_schema($pdo);
     $s = student($pdo, $_POST['code'] ?? '');
     if (!$s) {
         out(false, 'Student QR not recognized.');
+    }
+    if ((int)$s['account_active'] !== 1) {
+        out(false, 'Student account is inactive.');
     }
     
     $l = $pdo->prepare("SELECT * FROM attendance WHERE student_id = ? AND DATE(time_in) = CURDATE() ORDER BY id DESC LIMIT 1");
@@ -147,7 +188,6 @@ if ($a == 'attendance') {
             ->execute([$s['id'], $now]);
         $t = 'TIME-IN';
     }
-    
     out(true, $t . ': ' . $s['name'] . ' at ' . date('h:i:s A'), [
         'type' => $t, 
         'name' => $s['name'], 

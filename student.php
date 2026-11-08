@@ -1,19 +1,65 @@
-<?php require 'config.php';require 'ui2026.php';auth(['student']);
+<?php require 'config.php';require 'Ui2026.PHP';auth(['student']);
 $sid=$_SESSION['u']['student_id'];$m='';
-if(isset($_POST['pw'])){
-  $u=$pdo->prepare("SELECT password FROM users WHERE id=?");$u->execute([$_SESSION['u']['id']]);
-  if(!password_verify($_POST['old'],$u->fetchColumn()))$m='Current password is incorrect.';
-  elseif(strlen($_POST['new'])<6||$_POST['new']!==$_POST['new2'])$m='New password must be 6+ characters and match.';
-  else{$pdo->prepare("UPDATE users SET password=? WHERE id=?")->execute([password_hash($_POST['new'],PASSWORD_DEFAULT),$_SESSION['u']['id']]);$m='Password changed.';}
-}
 photo_col($pdo);
+ensure_book_request_schema($pdo);
 if(isset($_POST['photo_rm'])){photo_remove($pdo,$sid);$m='Profile photo removed.';}
 elseif(isset($_POST['photo_up'])){
   $e=photo_save($pdo,$sid,$_FILES['photo']??[]);
   if(($_SERVER['HTTP_X_REQUESTED_WITH']??'')==='fetch'){header('Content-Type: application/json');echo json_encode(['ok'=>!$e,'msg'=>$e?:'Profile photo updated.']);exit;}
   $m=$e?:'Profile photo updated.';
+}elseif(isset($_POST['book_request'])){
+  $bookId=filter_var($_POST['book_id']??null,FILTER_VALIDATE_INT);
+  $message=trim((string)($_POST['booking_message']??''));
+  $messageLength=function_exists('mb_strlen')?mb_strlen($message,'UTF-8'):strlen($message);
+  if(!csrf_token_valid($_POST['csrf_token']??null))$m='Your session expired. Refresh the page and try again.';
+  elseif(!$bookId||$messageLength>500)$m='Choose a valid book and keep your message to 500 characters or fewer.';
+  else{
+    $pdo->beginTransaction();
+    try{
+      $studentLock=$pdo->prepare("SELECT id FROM students WHERE id=? FOR UPDATE");$studentLock->execute([$sid]);
+      $bookQuery=$pdo->prepare("SELECT id,title,available FROM books WHERE id=? FOR UPDATE");$bookQuery->execute([$bookId]);$book=$bookQuery->fetch();
+      $existing=$pdo->prepare("SELECT COUNT(*) FROM book_requests WHERE student_id=? AND book_id=? AND status IN ('pending','approved')");
+      $existing->execute([$sid,$bookId]);
+      $borrowed=$pdo->prepare("SELECT COUNT(*) FROM borrowings WHERE student_id=? AND book_id=? AND returned_at IS NULL");
+      $borrowed->execute([$sid,$bookId]);
+      $held=$pdo->prepare("SELECT COUNT(*) FROM book_requests WHERE book_id=? AND status='approved'");$held->execute([$bookId]);
+      if(!$book){$pdo->rollBack();$m='That book is no longer in the catalog.';}
+      elseif((int)$existing->fetchColumn()>0){$pdo->rollBack();$m='You already have an active request for this book.';}
+      elseif((int)$borrowed->fetchColumn()>0){$pdo->rollBack();$m='You already have this book borrowed.';}
+      elseif((int)$book['available']-(int)$held->fetchColumn()<1){$pdo->rollBack();$m='No unreserved copy is available for booking right now.';}
+      else{
+        $pdo->prepare("INSERT INTO book_requests(student_id,book_id,message,status,requested_at) VALUES(?,?,?,'pending',NOW())")
+          ->execute([$sid,$bookId,$message]);
+        $pdo->commit();
+        $m='Your booking request was sent to the library admin.';
+      }
+    }catch(Throwable $e){
+      if($pdo->inTransaction())$pdo->rollBack();
+      throw $e;
+    }
+  }
+}elseif(isset($_POST['cancel_booking'])){
+  $requestId=filter_var($_POST['cancel_booking'],FILTER_VALIDATE_INT);
+  if(!csrf_token_valid($_POST['csrf_token']??null))$m='Your session expired. Refresh the page and try again.';
+  elseif(!$requestId)$m='Invalid booking request.';
+  else{
+    $cancel=$pdo->prepare("UPDATE book_requests SET status='cancelled' WHERE id=? AND student_id=? AND status IN ('pending','approved')");
+    $cancel->execute([$requestId,$sid]);
+    $m=$cancel->rowCount()?'Booking request cancelled.':'That request can no longer be cancelled.';
+  }
 }
 if(isset($_GET['ph']))$m='Profile photo updated.';
+$catalogQuery=$pdo->prepare("SELECT b.id,b.title,b.author,b.category,
+  GREATEST(0,b.available-(SELECT COUNT(*) FROM book_requests r WHERE r.book_id=b.id AND r.status='approved')) AS bookable
+  FROM books b
+  WHERE NOT EXISTS(SELECT 1 FROM book_requests r WHERE r.book_id=b.id AND r.student_id=? AND r.status IN ('pending','approved'))
+    AND NOT EXISTS(SELECT 1 FROM borrowings r WHERE r.book_id=b.id AND r.student_id=? AND r.returned_at IS NULL)
+  ORDER BY b.title");
+$catalogQuery->execute([$sid,$sid]);$catalogBooks=$catalogQuery->fetchAll();
+$bookingRows=$pdo->prepare("SELECT r.id,r.message,r.admin_reply,r.status,r.requested_at,r.reviewed_at,r.replied_at,b.title,b.author
+  FROM book_requests r JOIN books b ON b.id=r.book_id
+  WHERE r.student_id=? ORDER BY r.requested_at DESC LIMIT 50");
+$bookingRows->execute([$sid]);$bookingRows=$bookingRows->fetchAll();
 $st=$pdo->prepare("SELECT * FROM students WHERE id=?");$st->execute([$sid]);$st=$st->fetch();
 $loans=$pdo->prepare("SELECT b.title,b.author,r.borrowed_at,r.due_date,r.returned_at FROM borrowings r JOIN books b ON b.id=r.book_id WHERE r.student_id=? ORDER BY r.borrowed_at DESC");$loans->execute([$sid]);$loans=$loans->fetchAll();
 $att=$pdo->prepare("SELECT time_in,time_out FROM attendance WHERE student_id=? ORDER BY id DESC LIMIT 30");$att->execute([$sid]);$att=$att->fetchAll();
@@ -81,9 +127,10 @@ head('My Dashboard');ui_css();?>
 </style>
 <div class="pg">
 
-<?php if($m)echo '<div class="note'.(in_array($m,['Password changed.','Profile photo updated.','Profile photo removed.'])?'':' bad').'">'.ic('info').'<span>'.h($m).'</span></div>';?>
+<?php if($m)echo '<div class="note'.(in_array($m,['Password changed.','Profile photo updated.','Profile photo removed.','Your booking request was sent to the library admin.','Booking request cancelled.'],true)?'':' bad').'">'.ic('info').'<span>'.h($m).'</span></div>';?>
 
 <!-- Profile -->
+<section class="student-section" id="dashboard">
 <div class="card hero2">
   <form method="post" enctype="multipart/form-data" id="phform" class="pcol">
     <input type="hidden" name="photo_up" value="1">
@@ -119,9 +166,58 @@ head('My Dashboard');ui_css();?>
   <div class="sc t3"><div class="ico"><?=ic('return')?></div><span>Total books borrowed</span><b><?=count($loans)?></b></div>
   <div class="sc t4"><div class="ico"><?=ic('user')?></div><span>Library visits this month</span><b><?=$month?></b></div>
 </div>
+</section>
+
+<section class="student-section" id="pass"><?php library_pass($st,setting($pdo,'library_logo','assets/rhsti-school-logo.jpg'),setting($pdo,'library_name','eSmartlib'),setting($pdo,'school_name','RHSTI Library')); ?></section>
+
+<!-- Online booking -->
+<section class="student-section card" id="booking">
+  <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Online book booking</h3><p>Choose an available book and send a message to the library admin.</p></div></div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
+    <div class="fgrid">
+      <label class="fl"><span>Book</span>
+        <select name="book_id" required>
+          <option value="">Select a book</option>
+          <?php foreach($catalogBooks as $book):if((int)$book['bookable']>0):?>
+            <option value="<?=(int)$book['id']?>"><?=h($book['title'])?><?=!empty($book['author'])?' — '.h($book['author']):''?> (<?=(int)$book['bookable']?> available)</option>
+          <?php endif;endforeach;?>
+        </select>
+      </label>
+      <label class="fl"><span>Message to admin (optional)</span><input name="booking_message" maxlength="500" placeholder="Add a note about your booking"></label>
+    </div>
+    <div class="fact"><button name="book_request" value="1" <?=!array_filter($catalogBooks,fn($book)=>(int)$book['bookable']>0)?'disabled':''?>><?=ic('book')?>Send booking request</button></div>
+    <?php if(!array_filter($catalogBooks,fn($book)=>(int)$book['bookable']>0)):?><p class="help">No copies are currently available to book.</p><?php endif;?>
+  </form>
+
+  <div class="ph" style="margin-top:24px"><div><h3>My booking requests</h3><p>Admin replies and booking status appear here.</p></div><span class="badge"><?=count($bookingRows)?> request<?=count($bookingRows)===1?'':'s'?></span></div>
+  <div class="tw"><table class="rt">
+    <tr><th>Book</th><th>Your message</th><th>Admin reply</th><th>Status</th><th>Requested</th><th>Action</th></tr>
+    <?php foreach($bookingRows as $request):
+      $statusClass=['approved'=>'ok','fulfilled'=>'ok','pending'=>'warn','declined'=>'late','cancelled'=>'late'][$request['status']]??'';
+    ?>
+      <tr>
+        <td data-label="Book"><?=h($request['title'])?><small class="muted" style="display:block"><?=h($request['author']??'')?></small></td>
+        <td data-label="Your message"><?=h($request['message']?:'—')?></td>
+        <td data-label="Admin reply"><?=h($request['admin_reply']?:'Waiting for admin reply')?></td>
+        <td data-label="Status"><span class="pill <?=$statusClass?>"><?=h(ucfirst($request['status']))?></span></td>
+        <td data-label="Requested"><?=h(date('M j, Y · h:i A',strtotime($request['requested_at'])))?></td>
+        <td data-label="Action">
+          <?php if(in_array($request['status'],['pending','approved'],true)):?>
+            <form method="post" onsubmit="return confirm('Cancel this booking request?')">
+              <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
+              <button class="ghost" name="cancel_booking" value="<?=(int)$request['id']?>">Cancel</button>
+            </form>
+          <?php else:?>—<?php endif;?>
+        </td>
+      </tr>
+    <?php endforeach;?>
+    <?php if(!$bookingRows):?><tr><td colspan="6" class="muted e" style="text-align:center;padding:28px">You have no booking requests yet.</td></tr><?php endif;?>
+  </table></div>
+</section>
 
 <!-- Currently borrowed -->
-<div class="card">
+<section class="student-section card" id="borrowed">
   <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Currently borrowed</h3><p>Return on or before the due date.</p></div><span class="badge"><?=count($cur)?> book<?=count($cur)==1?'':'s'?></span></div>
   <div class="tw"><table class="rt">
     <tr><th>Book</th><th>Author</th><th>Borrowed</th><th>Due</th><th>Status</th></tr>
@@ -131,41 +227,68 @@ head('My Dashboard');ui_css();?>
       echo '<tr><td data-label="Book">'.h($l['title']).'</td><td class="muted" data-label="Author">'.h($l['author']).'</td><td class="muted" data-label="Borrowed">'.h(substr($l['borrowed_at'],0,10)).'</td><td data-label="Due">'.h($l['due_date']).'</td><td data-label="Status"><span class="pill '.$cls.'">'.h($txt).'</span></td></tr>';}
     if(!$cur)echo '<tr><td colspan="5" class="muted e" style="text-align:center;padding:28px">No borrowed books.</td></tr>';?>
   </table></div>
-</div>
+</section>
 
 <!-- History + attendance -->
 <div class="two">
-  <div class="card">
+  <section class="student-section card" id="history">
     <div class="ph"><span class="pico"><?=ic('return')?></span><div><h3>Borrowing history</h3></div></div>
     <div class="tw"><table class="rt">
       <tr><th>Book</th><th>Borrowed</th><th>Returned</th></tr>
       <?php foreach($hist as $l)echo '<tr><td data-label="Book">'.h($l['title']).'</td><td class="muted" data-label="Borrowed">'.h(substr($l['borrowed_at'],0,10)).'</td><td data-label="Returned">'.h(substr($l['returned_at'],0,10)).'</td></tr>';
       if(!$hist)echo '<tr><td colspan="3" class="muted e" style="text-align:center;padding:28px">No returned books yet.</td></tr>';?>
     </table></div>
-  </div>
-  <div class="card">
+  </section>
+  <section class="student-section card" id="attendance">
     <div class="ph"><span class="pico"><?=ic('clock')?></span><div><h3>Attendance (last 30)</h3></div></div>
     <div class="tw"><table class="rt">
       <tr><th>Date</th><th>Time-In</th><th>Time-Out</th></tr>
       <?php foreach($att as $a)echo '<tr><td data-label="Date">'.h(substr($a['time_in'],0,10)).'</td><td data-label="Time-In">'.h(date('h:i A',strtotime($a['time_in']))).'</td><td data-label="Time-Out">'.($a['time_out']?h(date('h:i A',strtotime($a['time_out']))):'-').'</td></tr>';
       if(!$att)echo '<tr><td colspan="3" class="muted e" style="text-align:center;padding:28px">No visits recorded yet.</td></tr>';?>
     </table></div>
-  </div>
+  </section>
 </div>
 
-<!-- Change password -->
-<form method="post" class="card">
-  <div class="ph"><span class="pico"><?=ic('user')?></span><div><h3>Change password</h3><p>Use at least 6 characters.</p></div></div>
-  <div class="pwgrid">
-    <input type="password" name="old" placeholder="Current" required>
-    <input type="password" name="new" placeholder="New (6+ chars)" required>
-    <input type="password" name="new2" placeholder="Repeat new" required>
-    <button name="pw" value="1">Update</button>
-  </div>
-</form>
+<nav class="student-bottom-nav" aria-label="Student dashboard sections">
+  <a href="#dashboard" class="active"><?=ic('user')?><span>My Dashboard</span></a>
+  <a href="#pass"><?=ic('file')?><span>My Pass</span></a>
+  <a href="#booking"><?=ic('book')?><span>Bookings</span></a>
+  <a href="#borrowed"><?=ic('book')?><span>My Borrowed</span></a>
+  <a href="#history"><?=ic('return')?><span>My History</span></a>
+  <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
+</nav>
 
 </div>
 <?php foot('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>renderQR();
+(function(){
+  var nav=document.querySelector(".student-bottom-nav");
+  if(!nav)return;
+  var links=Array.from(nav.querySelectorAll("a[href^=\\"#\\"]"));
+  var sections=links.map(function(link){return document.getElementById(link.hash.slice(1));}).filter(Boolean);
+  if(!sections.length)return;
+  var mobile=window.matchMedia("(max-width: 800px)");
+  function showSection(id,scroll){
+    var selected=sections.some(function(section){return section.id===id;})?id:"dashboard";
+    sections.forEach(function(section){section.hidden=mobile.matches&&section.id!==selected;});
+    links.forEach(function(link){
+      var active=link.hash==="#"+selected;
+      link.classList.toggle("active",active);
+      if(active)link.setAttribute("aria-current","page");
+      else link.removeAttribute("aria-current");
+    });
+    if(scroll&&mobile.matches)window.scrollTo({top:0,behavior:"smooth"});
+  }
+  nav.addEventListener("click",function(event){
+    var link=event.target.closest("a[href^=\\"#\\"]");
+    if(!link)return;
+    event.preventDefault();
+    history.replaceState(null,"",link.hash);
+    showSection(link.hash.slice(1),true);
+  });
+  window.addEventListener("hashchange",function(){showSection(location.hash.slice(1),true);});
+  mobile.addEventListener("change",function(){showSection(location.hash.slice(1),false);});
+  showSection(location.hash.slice(1),false);
+})();
 (function(){
   var pf=document.getElementById("photo"); if(!pf) return;
   pf.onchange=async function(){
