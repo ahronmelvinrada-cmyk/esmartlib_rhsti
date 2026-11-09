@@ -6,7 +6,10 @@ RUN docker-php-ext-install mysqli pdo pdo_mysql \
 
 WORKDIR /var/www/html
 
-COPY . /var/www/html
+COPY sourcecode/ ./
+COPY assets/ ./assets/
+COPY uploads/ ./uploads/
+RUN mkdir -p uploads/students uploads/library \
+    && chown -R www-data:www-data uploads
 
 EXPOSE 80
-

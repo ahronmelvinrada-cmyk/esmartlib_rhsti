@@ -1,1 +1,9 @@
 /hosting-config.php
+/sourcecode/hosting-config.php
+/.env
+/uploads/library/*
+!/uploads/library/.htaccess
+!/uploads/library/.gitkeep
+/uploads/students/*
+!/uploads/students/.htaccess
+!/uploads/students/.gitkeep

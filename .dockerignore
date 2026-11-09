@@ -1,0 +1,8 @@
+.git
+.env
+**/hosting-config.php
+application/
+database/
+tests/
+README*
+sourcecode/Dockerfile*
