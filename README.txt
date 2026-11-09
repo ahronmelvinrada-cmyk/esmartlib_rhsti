@@ -1,36 +1,55 @@
-SETUP (XAMPP)
-1. Copy this folder to C:\xampp\htdocs\esmartlib (rename if you like).
-2. Start Apache + MySQL. In phpMyAdmin, create/select the `database` database and import database.sql.
-3. The local XAMPP defaults are host `localhost`, database `database`, user `root`, and no password. For InfinityFree, copy `hosting-config.example.php` to `hosting-config.php`, enter the exact MySQL hostname, database name, username, and password from the hosting control panel, then upload `hosting-config.php` to the same `htdocs` folder as `config.php`. Do not share or commit this file. Import database.sql into the hosting database using the hosting phpMyAdmin; the SQL file creates tables but does not create or name the hosting database. Environment variables `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASS` are also supported.
-4. Open http://localhost/esmartlib/  -> login admin/admin123 or librarian/lib123 (auto-created on first visit; change them).
-5. Add students/books, print QR codes, then use Borrow / Return / Attendance pages.
-QR formats: students "STU:<student_no>", books "BK:<accession_no>".
-USB barcode/QR scanners work as keyboards: keep the scan box focused. Phone/laptop camera also supported (camera needs localhost or HTTPS).
-QR libraries load from CDN (internet needed on first use).
+# eSmartlib RHSTI – QR Code Extension
 
-PASSWORD RECOVERY
-- Users can submit a reset request from the Forgot password link on the sign-in page; no Gmail or outgoing mail setup is required.
-- An administrator signs in and opens Account & Requests > Password resets, confirms the user's identity, then generates a six-digit code. Give the code directly to that user; it is displayed once and expires after 10 minutes.
-- The user enters the code and chooses a new password on the Forgot password page. Codes expire after 10 minutes and are invalidated after five incorrect attempts.
+A library system that uses QR codes for borrowing, returning, and student time-in/time-out.
 
-ONLINE BOOK BOOKINGS
-- Students can request currently unreserved books from My Dashboard and include a message to the admin. Check request status and admin replies in the same section.
-- Admins can open Account & Requests > Book requests, reply, and approve or decline each request. Approved bookings hold a copy until the student borrows it using the usual student/book QR scanning workflow; the student can also cancel to release the hold.
-- Existing databases are updated automatically when a student dashboard, Books page, or Book requests page is opened.
+## Features
 
-ACCOUNT AND CHAT
-- Admins can manage their account, system settings, reset-code requests, and book requests in the tabs on the Account & Requests page. The old Settings, Password resets, and Book requests links redirect to the matching tab.
-- Use Chat > New chat to search by student name, student ID, or username and start private conversations with another active student, librarian, or admin. New messages are checked while the chat panel is open.
-- Admins see a red dot on Account & Requests when reset-code or book requests are waiting. The chat button also indicates unread messages.
-- For InfinityFree updates, upload config.php and messages.php beside student.php, and upload assets/messenger.js into the existing assets folder. Do not overwrite hosting-config.php unless intentionally updating database credentials.
-- Existing databases try to create the private-chat tables automatically when an authenticated page is opened. If the hosting database user cannot create tables, import migration_chat.sql into that database using phpMyAdmin.
+- **Borrow** – scan the student QR, then each book QR. The loan is saved with a due date.
+- **Return** – scan the book QR. The return date/time is saved and the book becomes available again.
+- **Attendance** – first scan is Time-In, next scan is Time-Out.
+- **Dashboard, history, reports** – view saved records.
+- **Roles** – admin and librarian logins.
 
-INSTALLABLE APP
-- On Android Chrome, use the browser menu and choose "Install app" or "Add to Home screen" when available.
-- On iPhone/iPad, open the site in Safari, tap Share, then "Add to Home Screen".
+## Tech Stack
 
-STUDENT DASHBOARD
-- Students who register on login.php create their own password and sign in with their Student ID and that password.
-- Students added by library staff can sign in with their Student ID as the initial password.
-- Students can change their password later from their dashboard.
-- Upgrading an old database? Import migration_student_dashboard.sql first.
+HTML, CSS, JavaScript • PHP • MySQL • QR libraries (loaded from CDN)
+
+## Setup (XAMPP)
+
+1. Copy this folder to `C:\xampp\htdocs\esmartlib`.
+2. Start **Apache** and **MySQL** in XAMPP.
+3. Open phpMyAdmin, create a database named `database`, then import `database.sql`.
+4. Open http://localhost/esmartlib/ and log in:
+   - `admin` / `admin123`
+   - `librarian` / `lib123`
+
+   These accounts are created automatically on first visit. **Change the passwords.**
+5. Add students and books, print their QR codes, then use the Borrow, Return, and Attendance pages.
+
+### Database settings
+
+Local XAMPP defaults: host `localhost`, database `database`, user `root`, no password.
+
+### Online hosting (InfinityFree)
+
+1. Copy `hosting-config.example.php` to `hosting-config.php`.
+2. Enter the MySQL hostname, database name, username, and password from your hosting control panel.
+3. Upload `hosting-config.php` to the same `htdocs` folder as `config.php`.
+4. Import `database.sql` using the hosting phpMyAdmin. (The file creates tables only; it does not create the database.)
+
+Do not share or commit `hosting-config.php`. You can also use the environment variables `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASS`.
+
+## QR Code Formats
+
+- Students: `STU:<student_no>`
+- Books: `BK:<accession_no>`
+
+## Scanning
+
+- **USB scanner:** it works like a keyboard. Keep the scan box selected.
+- **Camera:** works on phone or laptop, but needs `localhost` or HTTPS.
+- The QR libraries load from the internet (CDN), so you need a connection on first use.
+
+## Project Team
+
+13 members – see the project documentation for each member's role and contribution.
