@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 08, 2026 at 01:57 AM
+-- Generation Time: Nov 09, 2026 at 04:33 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -56,7 +56,9 @@ CREATE TABLE `attendance` (
 INSERT INTO `attendance` (`id`, `student_id`, `time_in`, `time_out`) VALUES
 (1, 3, '2026-10-26 13:10:58', '2026-10-26 19:18:45'),
 (2, 1, '2026-10-28 13:32:47', '2026-10-28 18:10:36'),
-(3, 1, '2026-11-03 17:07:36', NULL);
+(3, 1, '2026-11-03 17:07:36', NULL),
+(4, 1, '2026-11-08 13:02:32', '2026-11-08 13:07:55'),
+(5, 1, '2026-11-08 13:08:08', '2026-11-08 13:08:20');
 
 -- --------------------------------------------------------
 
@@ -368,7 +370,8 @@ INSERT INTO `students` (`id`, `student_no`, `name`, `gender`, `track`, `strand`,
 (87, '2026-0260', 'SORIA, EMMALYN A.', 'Female', 'TechPro', 'ICT', 'Grade 11', 'Zircon', NULL, 1),
 (88, '2026-0201', 'ZANTUA, JHELIAN S.', 'Female', 'TechPro', 'ICT', 'Grade 11', 'Zircon', NULL, 1),
 (91, '230634', 'JOAN BERJA', 'Female', 'ACADEMIC', 'CCS', '12', 'POKEMON', NULL, 1),
-(92, '2026005', 'ABIADA, KHAYLA S.', 'Female', 'Academic', 'ASSH', '12', 'persistent', NULL, 1);
+(92, '2026005', 'ABIADA, KHAYLA S.', 'Female', 'Academic', 'ASSH', '12', 'persistent', NULL, 1),
+(94, '230636', 'JOAN ko', 'Female', 'Academic', 'css', '12', 'persistent', NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -388,7 +391,8 @@ CREATE TABLE `student_login_locks` (
 
 INSERT INTO `student_login_locks` (`student_id`, `failed_attempts`, `locked_until`) VALUES
 (1, 0, NULL),
-(92, 0, NULL);
+(92, 0, NULL),
+(93, 0, NULL);
 
 -- --------------------------------------------------------
 
@@ -417,7 +421,8 @@ INSERT INTO `users` (`id`, `username`, `password`, `role`, `student_id`, `must_c
 (3, '230630', '$2y$10$bwqMQvg6S5gP2capg0uhG.Hg3.Pyx4tzjR6ITV.QD9z/2iGUItIFm', 'student', 1, 0, NULL, NULL),
 (4, '2026-0215', '$2y$10$eEu1aHF0K/4RBlmBrQj4gOTsmsPdKdOBFhKj0HdNe2My5HPKCXfZK', 'student', 3, 0, NULL, NULL),
 (7, '230634', '$2y$10$AenNCG9fprcEwdFXb7fvuuiZg6.dVAOTUNV3Xo7mIcXPh7Wzzj3pe', 'student', 91, 0, NULL, NULL),
-(8, '2026005', '$2y$10$h31A8rGE4BLeHDKvmN03ouCNG4N3w86iPBUe96JqyN.lIYvhma0Ya', 'student', 92, 1, NULL, NULL);
+(8, '2026005', '$2y$10$h31A8rGE4BLeHDKvmN03ouCNG4N3w86iPBUe96JqyN.lIYvhma0Ya', 'student', 92, 1, NULL, NULL),
+(10, '230636', '$2y$10$WXOYTJRys5ugdwOe/qA/kOX4pCJgqpOJLl/V5og6ukTb6XVASbP/u', 'student', 94, 0, NULL, NULL);
 
 --
 -- Indexes for dumped tables
@@ -530,7 +535,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `attendance`
 --
 ALTER TABLE `attendance`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `books`
@@ -566,19 +571,19 @@ ALTER TABLE `chat_messages`
 -- AUTO_INCREMENT for table `login_attempts`
 --
 ALTER TABLE `login_attempts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `students`
 --
 ALTER TABLE `students`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=93;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=95;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- Constraints for dumped tables
