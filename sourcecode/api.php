@@ -1,5 +1,6 @@
 <?php 
 require 'config.php';
+require 'Ui2026.PHP';
 header('Content-Type: application/json');
 
 if (empty($_SESSION['u'])) {
@@ -161,6 +162,7 @@ if ($a == 'return') {
 }
 
 if ($a == 'attendance') {
+    photo_col($pdo);
     ensure_student_account_status_schema($pdo);
     $s = student($pdo, $_POST['code'] ?? '');
     if (!$s) {
@@ -170,12 +172,13 @@ if ($a == 'attendance') {
         out(false, 'Student account is inactive.');
     }
     
-    $l = $pdo->prepare("SELECT * FROM attendance WHERE student_id = ? AND DATE(time_in) = CURDATE() ORDER BY id DESC LIMIT 1");
-    $l->execute([$s['id']]);
+    $todayStart = date('Y-m-d 00:00:00');
+    $tomorrowStart = date('Y-m-d 00:00:00', strtotime('+1 day'));
+    $l = $pdo->prepare("SELECT * FROM attendance WHERE student_id = ? AND time_in >= ? AND time_in < ? ORDER BY id DESC LIMIT 1");
+    $l->execute([$s['id'], $todayStart, $tomorrowStart]);
     $l = $l->fetch();
     
-    $last = $l ? strtotime($l['time_out'] ?: $l['time_in']) : 0;
-    if (time() - $last < SCAN_COOLDOWN) {
+    if ($l && $l['time_out'] && time() - strtotime($l['time_out']) < SCAN_COOLDOWN) {
         out(false, $s['name'] . ' was just scanned. Please wait.');
     }
     
@@ -188,9 +191,14 @@ if ($a == 'attendance') {
             ->execute([$s['id'], $now]);
         $t = 'TIME-IN';
     }
+    $photo = !empty($s['photo']) && photo_path_ok($s['photo']) && is_file(__DIR__ . '/' . $s['photo'])
+        ? $s['photo']
+        : '';
     out(true, $t . ': ' . $s['name'] . ' at ' . date('h:i:s A'), [
         'type' => $t, 
         'name' => $s['name'], 
+        'student_no' => $s['student_no'],
+        'photo' => $photo,
         'time' => date('h:i A')
     ]);
 }
