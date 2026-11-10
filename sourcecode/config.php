@@ -6,28 +6,19 @@
       session_start();
       date_default_timezone_set('Asia/Manila');
       
-      // Explicit environment/file settings take precedence, including in Docker
-      // where the browser's host is localhost but MySQL is a separate service.
-      $hosting_config = __DIR__ . '/hosting-config.php';
-      $settings = [];
-      if (is_file($hosting_config)) {
-          $settings = require $hosting_config;
-          if (!is_array($settings)) {
-              exit('hosting-config.php must return an array of database settings.');
-          }
-      }
-
-      $has_explicit_config = is_file($hosting_config)
-          || getenv('DB_HOST') !== false
-          || getenv('DB_NAME') !== false
-          || getenv('DB_USER') !== false
-          || getenv('DB_PASS') !== false;
-      if (!$has_explicit_config && $is_local) {
+      // Keep local XAMPP defaults separate from hosting credentials.
+      if ($is_local) {
           $db_host = 'localhost';
           $db_name = 'database';
           $db_user = 'root';
           $db_pass = '';
       } else {
+          $hosting_config = __DIR__ . '/hosting-config.php';
+          $settings = is_file($hosting_config) ? require $hosting_config : [];
+          if (!is_array($settings)) {
+              exit('hosting-config.php must return an array of database settings.');
+          }
+
           $db_host = $settings['host'] ?? (getenv('DB_HOST') ?: '');
           $db_name = $settings['name'] ?? (getenv('DB_NAME') ?: '');
           $db_user = $settings['user'] ?? (getenv('DB_USER') ?: '');
@@ -36,8 +27,8 @@
           if ($db_host === '' || $db_name === '' || $db_user === '') {
               exit('Create hosting-config.php from hosting-config.example.php and enter the database values from your hosting control panel.');
           }
-          if (!$is_local && ($db_pass === '' || $db_pass === 'ENTER_YOUR_NEW_MYSQL_PASSWORD_HERE')) {
-              exit('Enter the MySQL password in hosting-config.php or DB_PASS before connecting.');
+          if ($db_pass === '' || $db_pass === 'ENTER_YOUR_NEW_MYSQL_PASSWORD_HERE') {
+              exit('Enter your current InfinityFree MySQL password in hosting-config.php before connecting.');
           }
       }
       const LOAN_DAYS=7, MAX_LOANS=3, SCAN_COOLDOWN=10;
