@@ -3,17 +3,22 @@ require 'config.php';
 require 'Ui2026.PHP';
 auth();
 
+$todayStart = date('Y-m-d 00:00:00');
+$tomorrowStart = date('Y-m-d 00:00:00', strtotime('+1 day'));
+
 if (isset($_GET['stats'])) {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    $stats = $pdo->query("SELECT
+    $statsQuery = $pdo->prepare("SELECT
         (SELECT COUNT(*) FROM books) AS book_titles,
         (SELECT COALESCE(SUM(quantity),0) FROM books) AS book_copies,
         (SELECT COUNT(*) FROM students) AS students,
         (SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL) AS books_out,
         (SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()) AS overdue,
         (SELECT COUNT(*) FROM borrowings WHERE DATE(borrowed_at) = CURDATE() OR DATE(returned_at) = CURDATE()) AS scanned_today,
-        (SELECT COUNT(*) FROM attendance WHERE DATE(time_in) = CURDATE()) AS visits_today")->fetch(PDO::FETCH_ASSOC);
+        (SELECT COUNT(*) FROM attendance WHERE time_in >= ? AND time_in < ?) AS visits_today");
+    $statsQuery->execute([$todayStart, $tomorrowStart]);
+    $stats = $statsQuery->fetch(PDO::FETCH_ASSOC);
     echo json_encode(array_map('intval', $stats));
     exit;
 }
@@ -24,6 +29,9 @@ ui_side();
 $q = fn($sql) => $pdo->query($sql)->fetchColumn();
 $bookTitles = (int)$q("SELECT COUNT(*) FROM books");
 $bookCopies = (int)$q("SELECT COALESCE(SUM(quantity),0) FROM books");
+$visitsTodayQuery = $pdo->prepare("SELECT COUNT(*) FROM attendance WHERE time_in >= ? AND time_in < ?");
+$visitsTodayQuery->execute([$todayStart, $tomorrowStart]);
+$visitsToday = (int)$visitsTodayQuery->fetchColumn();
 
 /* ---------- Stat cards: label => [value, icon, tone] ---------- */
 $c = [
@@ -32,7 +40,7 @@ $c = [
     'Books Out'                     => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL"), 'out', 'amber'],
     'Overdue Alerts'                => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()"), 'alert', 'rose'],
     'Scanned Today'                 => [$q("SELECT COUNT(*) FROM borrowings WHERE DATE(borrowed_at) = CURDATE() OR DATE(returned_at) = CURDATE()"), 'scan', 'violet'],
-    'Library Visits Today'          => [$q("SELECT COUNT(*) FROM attendance WHERE DATE(time_in) = CURDATE()"), 'door', 'teal'],
+    'Library Visits Today'          => [$visitsToday, 'door', 'teal'],
 ];
 $sub = [
     'Book Titles'          => 'titles in catalog · '.$bookCopies.' total copies',
@@ -62,8 +70,10 @@ foreach ($pdo->query("SELECT DATE(borrowed_at) AS d, COUNT(*) AS n FROM borrowin
                       WHERE borrowed_at >= CURDATE() - INTERVAL 6 DAY GROUP BY d") as $r) {
     if (isset($days[$r['d']])) $days[$r['d']][0] = (int)$r['n'];
 }
-foreach ($pdo->query("SELECT DATE(time_in) AS d, COUNT(*) AS n FROM attendance
-                      WHERE time_in >= CURDATE() - INTERVAL 6 DAY GROUP BY d") as $r) {
+$attendanceDays = $pdo->prepare("SELECT DATE(time_in) AS d, COUNT(*) AS n FROM attendance
+                                 WHERE time_in >= ? AND time_in < ? GROUP BY d");
+$attendanceDays->execute([date('Y-m-d 00:00:00', strtotime('-6 days')), $tomorrowStart]);
+foreach ($attendanceDays as $r) {
     if (isset($days[$r['d']])) $days[$r['d']][1] = (int)$r['n'];
 }
 $labels = array_map(fn($d) => date('D j', strtotime($d)), array_keys($days));
