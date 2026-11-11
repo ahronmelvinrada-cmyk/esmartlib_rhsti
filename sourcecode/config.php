@@ -1,4 +1,4 @@
-    <?php
+<?php
       $is_local = in_array(strtolower($_SERVER['HTTP_HOST'] ?? ''), ['localhost', '127.0.0.1'], true);
       define('DEBUG', $is_local);
       ini_set('display_errors',DEBUG?'1':'0');
@@ -44,6 +44,16 @@
       }
       
       function h($s){return htmlspecialchars((string)$s,ENT_QUOTES);}
+
+      function ensure_user_email_schema($pdo){
+        static $done=false;
+        if($done)return;
+        $column=$pdo->query("SHOW COLUMNS FROM users LIKE 'email'");
+        if(!$column||!$column->fetch()){
+          $pdo->exec("ALTER TABLE users ADD COLUMN email VARCHAR(254) DEFAULT NULL");
+        }
+        $done=true;
+      }
 
       function ensure_recovery_schema($pdo){
         static $done=false;
@@ -185,11 +195,15 @@
         
         $nav=['index.php'=>['Dashboard','grid'],'students.php'=>['Students','users'],'books.php'=>['Books','book'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Time-In / Out','clock'],'history.php'=>['History','clock'],'account.php'=>['My Account','user']];
         if($role==='admin')$nav['account.php']=['Account & Requests','settings'];
-        if($role=='student')$nav=['student.php'=>['My Dashboard','grid'],'account.php'=>['My Profile','user']];
-        
+        if($role=='student'){
+          $nav=$p==='student.php'
+            ? ['#dashboard'=>['My Dashboard','grid'],'#pass'=>['My Pass','book'],'#booking'=>['Booking','book'],'#borrowed'=>['My Borrowed','book'],'#history'=>['My History','clock'],'#attendance'=>['Attendance','clock'],'account.php'=>['My Profile','user']]
+            : ['student.php'=>['My Dashboard','grid'],'account.php'=>['My Profile','user']];
+        }
+
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.h($title).' - '.h($libraryName).' | '.h($schoolName).'</title>'.pwa_head_assets().'<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="assets/style.css?v='.filemtime(__DIR__.'/assets/style.css').'"></head><body><div class="app'.($role==='student'?' student-app'.($p==='student.php'?' student-dashboard':''):($role==='admin'||$role==='librarian'?' staff-app':'')).'"><aside><div class="brand">'.$brandMark.'<span>'.h($libraryName).'<small>'.h($schoolName).'</small></span></div>'.($role==='student'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='admin'||$role==='librarian'?'<a class="staff-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':'' )).'<nav>';
         foreach($nav as $f=>[$l,$i]){
-          $active=($p==='account.php'&&strpos($f,'account.php')===0)||($p===basename($f));
+          $active=($p==='account.php'&&strpos($f,'account.php')===0)||($p===basename(parse_url($f,PHP_URL_PATH)?:$f)&&(!$f||$f[0]!=='#'))||($p==='student.php'&&$f==='#dashboard');
           echo '<a href="'.$f.'"'.($active?' class="on"':'').'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$I[$i].'</svg>'.$l.($role==='admin'&&$l==='Account & Requests'&&$notificationCount>0?'<i class="nav-alert-dot" aria-label="'.$notificationCount.' pending requests"></i>':'').'</a>';
         }
         echo '</nav><div class="who"><div class="who-info"><b>'.h($_SESSION['u']['username']).'</b><small><span class="who-dot"></span>'.h(ucfirst($role)).' account</small></div><div class="who-actions"><button type="button" class="tg" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l-1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button><a class="logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a></div></div></aside><main><h1>'.h($title).'</h1>';
