@@ -139,7 +139,7 @@ head('My Dashboard');ui_css();?>
   <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
 </nav>
 
-<!-- Profile -->  
+<!-- Profile -->
 <section class="student-section" id="dashboard">
 <div class="card hero2">
   <form method="post" enctype="multipart/form-data" id="phform" class="pcol">
