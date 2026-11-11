@@ -25,6 +25,33 @@ try{
     failed_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     locked_until BIGINT UNSIGNED DEFAULT NULL
   )");
+<?php require 'config.php';require_once 'Ui2026.PHP';
+ensure_student_account_status_schema($pdo);
+$libraryName=setting($pdo,'library_name','eSmartlib');
+$schoolName=setting($pdo,'school_name','RHSTI Library');
+$schoolLogo='assets/rhsti-school-logo.jpg';
+$registrationMessage='';
+$registrationSuccess=false;
+$registrationValues=['student_no'=>'','name'=>'','gender'=>'','track'=>'','strand'=>'','grade'=>'','section'=>''];
+if(empty($_SESSION['student_registration_token']))$_SESSION['student_registration_token']=bin2hex(random_bytes(32));
+$registrationToken=$_SESSION['student_registration_token'];
+
+/* ---------- Schema helpers (safe to run every time) ---------- */
+try{
+  $c=$pdo->query("SHOW COLUMNS FROM users LIKE 'must_change'");
+  if(!$c||!$c->fetch()) $pdo->exec("ALTER TABLE users ADD COLUMN must_change TINYINT(1) NOT NULL DEFAULT 0");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS login_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    tried_at DATETIME NOT NULL,
+    KEY k_ip_user (ip,username,tried_at)
+  )");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS student_login_locks (
+    student_id INT NOT NULL PRIMARY KEY,
+    failed_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until BIGINT UNSIGNED DEFAULT NULL
+  )");
 }catch(Exception $e){error_log('Login security schema setup failed: '.$e->getMessage());}
 
 /* NOTE: the old auto-seed of admin/admin123 and librarian/lib123 was removed on purpose.
@@ -295,136 +322,138 @@ body.lg{display:block;min-height:100vh;margin:0;background:#f4f7f3;font-family:'
   }
   .lg .lcard{position:relative;z-index:1;max-width:420px;margin:0 auto;padding:26px 22px 22px;border-radius:24px}
   .lg .mbrand{display:flex;align-items:center;gap:12px;margin:0 0 clamp(26px,6vh,48px);font-weight:800;font-size:19px;letter-spacing:-.02em;color:#0f3d26}
-  .lg .mbrand i{width:48px;height:48px;border-radius:16px;background:linear-gradient(145deg,#2a9d5c,#17653a);color:#fff;display:grid;place-items:center;font-style:normal;font-size:25px;font-weight:800;box-shadow:0 12px 24px -10px #1f7a46;flex:none}
-  .lg .mbrand img{width:52px;height:52px;object-fit:contain;flex:none;border-radius:50%;background:#fff;box-shadow:0 8px 20px -10px rgba(15,61,38,.3)}
-  .lg .mbrand small{display:block;font-weight:500;font-size:12.5px;color:#667467;letter-spacing:0;line-height:1.35}
-  .lg .lcard h1{font-size:clamp(26px,7.4vw,31px);line-height:1.12}
-  .lg .sub{margin-bottom:26px;font-size:15px}
-  .lg label.f{margin-bottom:18px}
-  .lg label.f>span{font-size:13px}
-  .lg .inp input{height:58px;border-radius:17px;font-size:16px}
-  .lg .eye{width:44px;height:44px}
-  .lg .register-form .register-password-wrap .eye{width:44px;height:44px}
-  .lg .go{height:58px;margin-top:8px;border-radius:17px}
-}
-@media(max-width:380px){
-  .lg .panel{padding-right:16px;padding-left:16px}
-  .lg .mbrand{margin-bottom:28px}
-}
-[data-theme="dark"] .lg .lcard{background:rgba(25,35,29,.94);border-color:#2c3b31;box-shadow:0 24px 70px -38px rgba(0,0,0,.8)}
-[data-theme="dark"] .lg .school-note{color:#9db3a5}
-[data-theme="dark"] .lg .school-note b{color:#d6e8db}
-@media(prefers-reduced-motion:reduce){.lg *{animation:none!important;transition:none!important}}
-</style></head>
-<body class="lg">
-<div class="shell">
+  .lg .mbrand i{wid}catch(Exception $e){error_log('Login security schema setup failed: '.$e->getMessage());}
 
-  <!-- Brand panel -->
-  <section class="hero">
-    <div class="brand2"><img src="<?=h($schoolLogo)?>" alt="RHSTI school logo"><div><?=h($libraryName)?> <small><?=h($schoolName)?></small></div></div>
-    <div>
-      <h2>Your school library, <span>one scan away.</span></h2>
-      <p class="lead">Borrow, return and time-in with a QR code. Everything the library needs, in one clean dashboard.</p>
-      <div class="feats">
-        <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/></svg><div>QR borrow &amp; return<small>Scan the student, then the book. Done.</small></div></div>
-        <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div>Library attendance<small>Automatic time-in and time-out.</small></div></div>
-        <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><div>Live dashboard<small>Overdue alerts and weekly activity.</small></div></div>
-      </div>
-    </div>
-    <div class="foot">&copy; <?=date('Y')?> The Ripple of Hope Skills and Technology Institute Library</div>
-  </section>
+/* NOTE: the old auto-seed of admin/admin123 and librarian/lib123 was removed on purpose.
+   Create staff accounts directly in the database (see instructions). */
 
-  <!-- Form -->
-  <section class="panel">
-    <div class="lcard">
-      <div class="auth-tabs" role="tablist" aria-label="Account options">
-        <a role="tab" data-auth-tab="signin" href="?view=signin" aria-controls="signin-view" aria-selected="<?=$authView==='signin'?'true':'false'?>">Sign in</a>
-        <a role="tab" data-auth-tab="register" href="?view=register" aria-controls="register-view" aria-selected="<?=$authView==='register'?'true':'false'?>">Register</a>
-      </div>
-    <form method="post" class="signin-form auth-view" id="signin-view" role="tabpanel" autocomplete="on" <?=$authView==='signin'?'':'hidden'?>>
-      <div class="mbrand"><img src="<?=h($schoolLogo)?>" alt="RHSTI school logo"><div><?=h($libraryName)?><small><?=h($schoolName)?></small></div></div>
-      <h1><?=h($libraryName)?></h1>
-      <p class="sub"><?=h($schoolName)?> &middot; Sign in with your school library account.</p>
-      <?php if($notice!==''):?><p class="reg-msg success" role="status"><?=h($notice)?></p><?php endif;?>
-      <?php if($err)echo '<div class="err" role="alert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><span>'.h($err).'</span></div>';?>
+$err=isset($_GET['deactivated'])?'This student account has been deactivated. Please contact library staff.':'';
+$notice=isset($_GET['reset'])?'Password updated. You can now sign in with your new password.':'';
+$ip=$_SERVER['REMOTE_ADDR']??'';
+const MAX_TRIES=5;      // failed attempts allowed...
+const WINDOW_SEC=600;   // ...within this many seconds (10 minutes)
 
-      <label class="f"><span>Username / Student ID</span>
-        <div class="inp"><svg class="l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-        <input name="username" placeholder="Enter your username or student ID" value="<?=h($_POST['username']??'')?>" autocomplete="username" required <?=empty($_POST['username'])?'autofocus':''?>></div></label>
-
-      <label class="f"><span>Password</span>
-        <div class="inp pw"><svg class="l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        <input id="pw" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required <?=!empty($_POST['username'])?'autofocus':''?>>
-        <button type="button" class="eye" id="eye" aria-label="Show password"><svg id="eyei" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
-
-      <button class="go" id="go">Sign in <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
-      <p class="forgot-link"><a href="forgot_password.php">Forgot password?</a></p>
-
-      <p class="school-note">
-        Official library system of <b>The Ripple of Hope Skills and Technology Institute </b>.
-        For enrolled students and library staff only. Never share your password with anyone.
-      </p>
-    </form>
-      <div class="auth-view" id="register-view" role="tabpanel" <?=$authView==='register'?'':'hidden'?>>
-      <h2 class="auth-title">Create student account</h2>
-      <p class="auth-description">Enter your school details and create a password for your account.</p>
-      <?php if($registrationMessage!==''):?>
-        <p class="reg-msg <?=$registrationSuccess?'success':'error'?>" role="<?=$registrationSuccess?'status':'alert'?>"><?=h($registrationMessage)?></p>
-      <?php endif;?>
-      <form method="post" class="register-form" autocomplete="on">
-        <input type="hidden" name="registration_token" value="<?=h($registrationToken)?>">
-        <label>Student ID<input name="student_no" maxlength="30" value="<?=h($registrationValues['student_no'])?>" required></label>
-        <label>Full name<input name="name" maxlength="120" value="<?=h($registrationValues['name'])?>" required></label>
-        <label>Gender<select name="gender"><option value="">Select</option><option value="Male" <?=$registrationValues['gender']==='Male'?'selected':''?>>Male</option><option value="Female" <?=$registrationValues['gender']==='Female'?'selected':''?>>Female</option></select></label>
-        <label>Grade<input name="grade" maxlength="10" value="<?=h($registrationValues['grade'])?>"></label>
-        <label>Track<input name="track" maxlength="60" value="<?=h($registrationValues['track'])?>"></label>
-        <label>Strand<input name="strand" maxlength="60" value="<?=h($registrationValues['strand'])?>"></label>
-        <label class="wide">Section<input name="section" maxlength="30" value="<?=h($registrationValues['section'])?>"></label>
-        <label>Password<span class="register-password-wrap"><input id="register-pw" name="registration_password" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="eye" data-password-toggle="register-pw" aria-label="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
-        <label>Confirm password<span class="register-password-wrap"><input id="register-pw-confirm" name="registration_password_confirm" type="password" minlength="8" autocomplete="new-password" required><button type="button" class="eye" data-password-toggle="register-pw-confirm" aria-label="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
-        <p class="auth-description register-password-hint">Use at least 8 characters, including a letter and a number.</p>
-        <button type="submit" name="register_student" value="1"><span>Register Student</span></button>
-      </form>
-      </div>
-    </div>
-  </section>
-</div>
-<script>
-(function(){
-  var pw=document.getElementById("pw"),eye=document.getElementById("eye"),open='<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
-      shut='<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.9C3.8 8.7 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
-  function bindPasswordToggle(input,button,icon){
-    button.addEventListener("click",function(){
-      var show=input.type==="password";
-      input.type=show?"text":"password";
-      icon.innerHTML=show?shut:open;
-      button.setAttribute("aria-label",show?"Hide password":"Show password");
-      input.focus();
-    });
+if(isset($_POST['register_student'])){
+  foreach($registrationValues as $key=>$value){
+    $registrationValues[$key]=trim(is_string($_POST[$key]??null)?$_POST[$key]:'');
   }
-  bindPasswordToggle(pw,eye,document.getElementById("eyei"));
-  document.querySelectorAll("[data-password-toggle]").forEach(function(button){
-    bindPasswordToggle(document.getElementById(button.dataset.passwordToggle),button,button.querySelector("svg"));
-  });
-  document.querySelectorAll("[data-auth-tab]").forEach(function(tab){
-    tab.addEventListener("click",function(event){
-      event.preventDefault();
-      var selected=tab.dataset.authTab;
-      document.querySelectorAll("[data-auth-tab]").forEach(function(item){item.setAttribute("aria-selected",item===tab?"true":"false");});
-      document.querySelectorAll(".auth-view").forEach(function(view){view.hidden=view.id!==(selected==="signin"?"signin-view":"register-view");});
-    });
-  });
-  var registerForm=document.querySelector("form.register-form");
-  registerForm.addEventListener("submit",function(event){
-    if(registerForm.dataset.submitting==="true"){event.preventDefault();return;}
-    registerForm.dataset.submitting="true";
-    registerForm.setAttribute("aria-busy","true");
-    var button=registerForm.querySelector('button[type="submit"]');
-    button.classList.add("is-loading");
-    button.setAttribute("aria-label","Registering student");
-    button.innerHTML='<span class="register-spinner" aria-hidden="true"></span><span>Registering...</span>';
-  });
-  document.querySelector("form.signin-form").addEventListener("submit",function(){var g=document.getElementById("go");g.classList.add("busy");g.firstChild.nodeValue="Signing in… ";});
-})();
-</script>
-</body></html> 
+  $studentNo=$registrationValues['student_no'];
+  $name=$registrationValues['name'];
+  $gender=$registrationValues['gender'];
+  $track=$registrationValues['track'];
+  $strand=$registrationValues['strand'];
+  $grade=$registrationValues['grade'];
+  $section=$registrationValues['section'];
+  $registrationPassword=(string)($_POST['registration_password']??'');
+  $registrationPasswordConfirm=(string)($_POST['registration_password_confirm']??'');
+  $length=fn($value)=>function_exists('mb_strlen')?mb_strlen($value,'UTF-8'):strlen($value);
+
+  if(!is_string($_POST['registration_token']??null)||!hash_equals($registrationToken,$_POST['registration_token'])){
+    $registrationMessage='Your registration session expired. Refresh the page and try again.';
+  }elseif($studentNo===''||$name===''){
+    $registrationMessage='Student ID and full name are required.';
+  }elseif(strlen($registrationPassword)<8){
+    $registrationMessage='Password must be at least 8 characters.';
+  }elseif(!preg_match('/[A-Za-z]/',$registrationPassword)||!preg_match('/\d/',$registrationPassword)){
+    $registrationMessage='Password must contain at least one letter and one number.';
+  }elseif($registrationPassword!==$registrationPasswordConfirm){
+    $registrationMessage='The passwords do not match.';
+  }elseif($gender!==''&&!in_array($gender,['Male','Female'],true)){
+    $registrationMessage='Choose a valid gender.';
+  }elseif($length($studentNo)>30||$length($name)>120||$length($gender)>10
+    ||$length($track)>60||$length($strand)>60||$length($grade)>10||$length($section)>30){
+    $registrationMessage='One or more fields exceed the allowed length.';
+  }else{
+    try{
+      $pdo->beginTransaction();
+      $insert=$pdo->prepare("INSERT INTO students(student_no,name,gender,track,strand,grade,section,account_active) VALUES(?,?,?,?,?,?,?,1)");
+      $insert->execute([$studentNo,$name,$gender,$track,$strand,$grade,$section]);
+      $studentId=(int)$pdo->lastInsertId();
+      $createAccount=$pdo->prepare("INSERT INTO users(username,password,role,student_id,must_change) VALUES(?,?,'student',?,0)");
+      $createAccount->execute([$studentNo,password_hash($registrationPassword,PASSWORD_DEFAULT),$studentId]);
+      $pdo->commit();
+      $registrationMessage='Student registered successfully. Sign in using your Student ID and the password you created.';
+      $registrationSuccess=true;
+      $registrationValues=['student_no'=>'','name'=>'','gender'=>'','track'=>'','strand'=>'','grade'=>'','section'=>''];
+      $_SESSION['student_registration_token']=bin2hex(random_bytes(32));
+      $registrationToken=$_SESSION['student_registration_token'];
+    }catch(PDOException $e){
+      if($pdo->inTransaction())$pdo->rollBack();
+      if(($e->errorInfo[1]??null)===1062){
+        $registrationMessage='That Student ID is already registered or its username is already in use.';
+      }else{
+        error_log('Student registration failed: '.$e->getMessage());
+        $registrationMessage='Could not register the student. Please try again.';
+      }
+    }
+  }
+}elseif($_SERVER['REQUEST_METHOD']==='POST'){
+  $user=trim((string)($_POST['username']??''));
+  $pass=(string)($_POST['password']??'');
+  $accountQuery=$pdo->prepare("SELECT * FROM users WHERE username=?");
+  $accountQuery->execute([$user]);
+  $u=$accountQuery->fetch();
+  $student=null;
+  if($u&&$u['role']==='student'){
+    $studentQuery=$pdo->prepare("SELECT * FROM students WHERE id=?");
+    $studentQuery->execute([(int)$u['student_id']]);
+    $student=$studentQuery->fetch();
+  }
+
+  $authenticatedUser=null;
+  $isStudentAccount=$u&&$u['role']==='student';
+  if($isStudentAccount){
+    if(!$student||(int)$student['account_active']!==1){
+      $err=$student?'This student account has been deactivated. Please contact library staff.':'Invalid username/Student ID or password.';
+    }else{
+      $pdo->prepare("INSERT INTO student_login_locks(student_id) VALUES(?) ON DUPLICATE KEY UPDATE student_id=VALUES(student_id)")
+          ->execute([(int)$student['id']]);
+      $lockQuery=$pdo->prepare("SELECT failed_attempts,locked_until FROM student_login_locks WHERE student_id=?");
+      $lockQuery->execute([(int)$student['id']]);
+      $lock=$lockQuery->fetch();
+      $now=time();
+      $lockedUntil=(int)($lock['locked_until']??0);
+      if($lockedUntil>$now){
+        $minutes=(int)ceil(($lockedUntil-$now)/60);
+        $err='Too many failed attempts. Please wait '.$minutes.' minute'.($minutes===1?'':'s').' before trying again.';
+      }else{
+        $passwordMatches=password_verify($pass,$u['password']);
+        if($passwordMatches){
+          $pdo->prepare("UPDATE student_login_locks SET failed_attempts=0,locked_until=NULL WHERE student_id=?")
+              ->execute([(int)$student['id']]);
+          $authenticatedUser=$u;
+        }else{
+          $failures=min((int)$lock['failed_attempts']+1,14);
+          $lockMinutes=$failures>=5?min($failures-4,10):0;
+          $newLockedUntil=$lockMinutes>0?$now+($lockMinutes*60):null;
+          $pdo->prepare("UPDATE student_login_locks SET failed_attempts=?,locked_until=? WHERE student_id=?")
+              ->execute([$failures,$newLockedUntil,(int)$student['id']]);
+          $err=$lockMinutes>0
+            ?'Too many failed attempts. Please wait '.$lockMinutes.' minute'.($lockMinutes===1?'':'s').' before trying again.'
+            :'Invalid username/Student ID or password.';
+        }
+      }
+    }
+  }else{
+    $since=date('Y-m-d H:i:s',time()-WINDOW_SEC);
+    $cnt=$pdo->prepare("SELECT COUNT(*) FROM login_attempts WHERE ip=? AND username=? AND tried_at>=?");
+    $cnt->execute([$ip,$user,$since]);
+    if((int)$cnt->fetchColumn()>=MAX_TRIES){
+      $err='Too many failed attempts. Please try again in 10 minutes.';
+    }elseif($u&&password_verify($pass,$u['password'])){
+      $authenticatedUser=$u;
+    }else{
+      $pdo->prepare("INSERT INTO login_attempts(ip,username,tried_at) VALUES(?,?,?)")
+          ->execute([$ip,$user,date('Y-m-d H:i:s')]);
+      $pdo->prepare("DELETE FROM login_attempts WHERE tried_at<?")
+          ->execute([date('Y-m-d H:i:s',time()-86400)]);
+      $err='Invalid username/Student ID or password.';
+    }
+  }
+
+  if($authenticatedUser){
+    session_regenerate_id(true);
+    $pdo->prepare("DELETE FROM login_attempts WHERE ip=? AND username=?")->execute([$ip,$user]);
+    $_SESSION['u']=['id'=>$authenticatedUser['id'],'username'=>$authenticatedUser['username'],'role'=>$authenticatedUser['role'],'student_id'=>$authenticatedUser['student_id']];
+    unset($_SESSION['must_change']);
+    header('Location: '.($authenticatedUser['role']=='student'?'student.php':'index.php'));exit;
