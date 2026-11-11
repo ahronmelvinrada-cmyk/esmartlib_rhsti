@@ -1,5 +1,6 @@
 <?php require 'config.php';require 'Ui2026.PHP';auth(['student']);
 $sid=$_SESSION['u']['student_id'];$m='';
+ensure_user_email_schema($pdo);
 photo_col($pdo);
 ensure_book_request_schema($pdo);
 if(isset($_POST['photo_rm'])){photo_remove($pdo,$sid);$m='Profile photo removed.';}
@@ -60,7 +61,7 @@ $bookingRows=$pdo->prepare("SELECT r.id,r.message,r.admin_reply,r.status,r.reque
   FROM book_requests r JOIN books b ON b.id=r.book_id
   WHERE r.student_id=? ORDER BY r.requested_at DESC LIMIT 50");
 $bookingRows->execute([$sid]);$bookingRows=$bookingRows->fetchAll();
-$st=$pdo->prepare("SELECT * FROM students WHERE id=?");$st->execute([$sid]);$st=$st->fetch();
+$st=$pdo->prepare("SELECT s.*,u.email FROM students s LEFT JOIN users u ON u.student_id=s.id AND u.role='student' WHERE s.id=? LIMIT 1");$st->execute([$sid]);$st=$st->fetch();
 $loans=$pdo->prepare("SELECT b.title,b.author,r.borrowed_at,r.due_date,r.returned_at FROM borrowings r JOIN books b ON b.id=r.book_id WHERE r.student_id=? ORDER BY r.borrowed_at DESC");$loans->execute([$sid]);$loans=$loans->fetchAll();
 $att=$pdo->prepare("SELECT time_in,time_out FROM attendance WHERE student_id=? ORDER BY id DESC LIMIT 30");$att->execute([$sid]);$att=$att->fetchAll();
 $today=date('Y-m-d');$cur=array_filter($loans,fn($l)=>!$l['returned_at']);
@@ -129,7 +130,16 @@ head('My Dashboard');ui_css();?>
 
 <?php if($m)echo '<div class="note'.(in_array($m,['Password changed.','Profile photo updated.','Profile photo removed.','Your booking request was sent to the library admin.','Booking request cancelled.'],true)?'':' bad').'">'.ic('info').'<span>'.h($m).'</span></div>';?>
 
-<!-- Profile -->
+<nav class="student-bottom-nav" aria-label="Student dashboard sections">
+  <a href="#dashboard" class="active"><?=ic('user')?><span> Dashboard</span></a>
+  <a href="#pass"><?=ic('file')?><span>Library Pass</span></a>
+  <a href="#booking"><?=ic('book')?><span>Booking</span></a>
+  <a href="#borrowed"><?=ic('book')?><span> Borrowed</span></a>
+  <a href="#history"><?=ic('return')?><span>History</span></a>
+  <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
+</nav>
+
+<!-- Profile -->  
 <section class="student-section" id="dashboard">
 <div class="card hero2">
   <form method="post" enctype="multipart/form-data" id="phform" class="pcol">
@@ -249,44 +259,39 @@ head('My Dashboard');ui_css();?>
   </section>
 </div>
 
-<nav class="student-bottom-nav" aria-label="Student dashboard sections">
-  <a href="#dashboard" class="active"><?=ic('user')?><span>My Dashboard</span></a>
-  <a href="#pass"><?=ic('file')?><span>My Pass</span></a>
-  <a href="#booking"><?=ic('book')?><span>Bookings</span></a>
-  <a href="#borrowed"><?=ic('book')?><span>My Borrowed</span></a>
-  <a href="#history"><?=ic('return')?><span>My History</span></a>
-  <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
-</nav>
-
 </div>
 <?php foot('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>renderQR();
 (function(){
-  var nav=document.querySelector(".student-bottom-nav");
-  if(!nav)return;
-  var links=Array.from(nav.querySelectorAll("a[href^=\\"#\\"]"));
-  var sections=links.map(function(link){return document.getElementById(link.hash.slice(1));}).filter(Boolean);
+  var menus=document.querySelectorAll(".student-bottom-nav,.student-app aside nav");
+  if(!menus.length)return;
+  var links=Array.from(document.querySelectorAll(".student-bottom-nav a[href^=\\"#\\"],.student-app aside nav a[href^=\\"#\\"]"));
+  var sections=Array.from(new Set(links.map(function(link){return document.getElementById(link.hash.slice(1));}).filter(Boolean)));
   if(!sections.length)return;
-  var mobile=window.matchMedia("(max-width: 800px)");
   function showSection(id,scroll){
     var selected=sections.some(function(section){return section.id===id;})?id:"dashboard";
-    sections.forEach(function(section){section.hidden=mobile.matches&&section.id!==selected;});
+    sections.forEach(function(section){section.hidden=section.id!==selected;});
     links.forEach(function(link){
       var active=link.hash==="#"+selected;
       link.classList.toggle("active",active);
+      link.classList.toggle("on",active);
       if(active)link.setAttribute("aria-current","page");
       else link.removeAttribute("aria-current");
     });
-    if(scroll&&mobile.matches)window.scrollTo({top:0,behavior:"smooth"});
+    if(scroll){
+      var target=document.getElementById(selected);
+      if(target)target.scrollIntoView({behavior:"smooth",block:"start"});
+    }
   }
-  nav.addEventListener("click",function(event){
-    var link=event.target.closest("a[href^=\\"#\\"]");
-    if(!link)return;
-    event.preventDefault();
-    history.replaceState(null,"",link.hash);
-    showSection(link.hash.slice(1),true);
+  menus.forEach(function(menu){
+    menu.addEventListener("click",function(event){
+      var link=event.target.closest("a[href^=\\"#\\"]");
+      if(!link)return;
+      event.preventDefault();
+      history.replaceState(null,"",link.hash);
+      showSection(link.hash.slice(1),true);
+    });
   });
   window.addEventListener("hashchange",function(){showSection(location.hash.slice(1),true);});
-  mobile.addEventListener("change",function(){showSection(location.hash.slice(1),false);});
   showSection(location.hash.slice(1),false);
 })();
 (function(){
