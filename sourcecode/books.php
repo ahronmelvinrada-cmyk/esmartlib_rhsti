@@ -111,6 +111,19 @@ $s = $pdo->prepare("SELECT b.id,b.accession_no,b.title,b.author,b.publisher,b.ca
 $l = '%'.($_GET['q']??'').'%';
 $s->execute([$l, $l, $l]);
 $rows = $s->fetchAll();
+if (($_GET['download'] ?? '') === 'books') {
+    require_once 'export_helper.php';
+    $exportRows = [];
+    foreach ($rows as $row) {
+        $exportRows[] = [
+            $row['accession_no'], $row['title'], $row['author'], $row['publisher'],
+            $row['category'], $row['quantity'], $row['available'],
+        ];
+    }
+    export_excel_download('Book_Records',
+        ['Accession / Book ID', 'Title', 'Author', 'Publisher', 'Category', 'Total Copies', 'Available'],
+        $exportRows);
+}
 
 head('Books Catalog');
 ui_css();
@@ -143,41 +156,15 @@ ui_css();
   <p class="hint">Columns (with header row): accession_no, title, author, publisher, category, quantity. Duplicate accession numbers are skipped.</p>
 </form>
 
-<!-- Search & Print -->
+<!-- Search & Downloads -->
 <form class="bar">
   <div class="sw"><?=ic('search')?><input name="q" placeholder="Search title, author or accession no..." value="<?=h($_GET['q']??'')?>"></div>
   <button><?=ic('search')?>Search</button>
-  <button type="button" class="ghost" onclick="printBookRecords()"><?=ic('print')?>Print Book Records</button>
-  <button type="button" class="ghost" onclick="print()"><?=ic('print')?>Print QR Codes</button>
+  <a class="btn ghost" href="?<?=h(http_build_query(['q'=>$_GET['q']??'','download'=>'books']))?>"><?=ic('download')?>Download Book Records (Excel)</a>
+  <button type="button" class="ghost" onclick="downloadQrCodesWord(this)"><?=ic('download')?>Download QR Codes (Word)</button>
+  <small class="download-status" role="status" aria-live="polite"></small>
   <span class="badge"><?=count($rows)?> title<?=count($rows)==1?'':'s'?></span>
 </form>
-
-<section class="book-record-print" aria-hidden="true">
-  <header>
-    <h1><?=h(setting($pdo,'library_name','eSmartlib'))?></h1>
-    <p><?=h(setting($pdo,'school_name','RHSTI Library'))?></p>
-    <h2>Book Inventory Records</h2>
-    <p>Printed <?=h(date('F j, Y'))?> · <?=count($rows)?> title<?=count($rows)==1?'':'s'?></p>
-  </header>
-  <table>
-    <thead><tr><th>#</th><th>Accession / Book ID</th><th>Title</th><th>Author</th><th>Publisher</th><th>Category</th><th>Total Copies</th><th>Available</th></tr></thead>
-    <tbody>
-      <?php foreach($rows as $i=>$r):?>
-        <tr>
-          <td><?=$i+1?></td>
-          <td><?=h($r['accession_no'])?></td>
-          <td><?=h($r['title'])?></td>
-          <td><?=h($r['author']?:'-')?></td>
-          <td><?=h($r['publisher']?:'-')?></td>
-          <td><?=h($r['category']?:'-')?></td>
-          <td><?=h($r['quantity'])?></td>
-          <td><?=h($r['available'])?></td>
-        </tr>
-      <?php endforeach;?>
-      <?php if(!$rows):?><tr><td colspan="8">No books found.</td></tr><?php endif;?>
-    </tbody>
-  </table>
-</section>
 
 <?php if ($_SESSION['u']['role'] === 'admin'):?>
 <div class="bulk-actions noprint">
@@ -229,7 +216,6 @@ ui_css();
 
 </div>
 <style>
-.book-record-print{display:none}
 .pg .bulk-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
 .pg .bulk-actions>label{display:flex;align-items:center;gap:8px;font-weight:700}
 .pg .bulk-actions input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--g)}
@@ -246,28 +232,10 @@ ui_css();
 .pg .book-view dt{color:var(--mute);font-size:12px;font-weight:700}
 .pg .book-view dd{margin:0;color:var(--ink);font-size:13px;overflow-wrap:anywhere}
 [data-theme="dark"] .pg .book-view{border-color:var(--line)}
-@media print{
-  @page{size:landscape;margin:12mm}
-  body.printing-book-records *{visibility:hidden!important}
-  body.printing-book-records .book-record-print,
-  body.printing-book-records .book-record-print *{visibility:visible!important}
-  body.printing-book-records .book-record-print{display:block!important;position:absolute;inset:0 auto auto 0;width:100%;padding:0 12px}
-  body.printing-book-records .book-record-print header{text-align:center;margin-bottom:20px}
-  body.printing-book-records .book-record-print h1{font-size:20px;margin:0}
-  body.printing-book-records .book-record-print h2{font-size:17px;margin:12px 0 4px}
-  body.printing-book-records .book-record-print p{margin:4px 0;font-size:11px}
-  body.printing-book-records .book-record-print table{width:100%;border-collapse:collapse;font-size:10px}
-  body.printing-book-records .book-record-print th,
-  body.printing-book-records .book-record-print td{border:1px solid #555;padding:6px;text-align:left;overflow-wrap:anywhere}
-  body.printing-book-records .book-record-print th{background:#e8eeea!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body.printing-book-records .book-record-print tr{break-inside:avoid}
-}
 </style>
 <?php
-foot('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>
+foot('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script><script>
 renderQR();
-function printBookRecords(){document.body.classList.add("printing-book-records");window.print()}
-window.addEventListener("afterprint",function(){document.body.classList.remove("printing-book-records")});
 var bookChecks=document.querySelectorAll(".book-select");
 var selectAllBooks=document.getElementById("select-all-books");
 var selectedBookCount=document.getElementById("selected-book-count");
