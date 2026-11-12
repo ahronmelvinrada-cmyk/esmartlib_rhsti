@@ -2,9 +2,13 @@
 require 'config.php';
 require 'Ui2026.PHP';
 auth();
-$history=$pdo->query("SELECT s.student_no,s.name,b.title,r.borrowed_at,r.due_date,r.returned_at
+ensure_teacher_schema($pdo);
+$history=$pdo->query("SELECT COALESCE(s.student_no,t.teacher_no) AS borrower_no,
+  COALESCE(s.name,t.name) AS borrower_name,CASE WHEN r.teacher_id IS NULL THEN 'Student' ELSE 'Teacher' END AS borrower_type,
+  b.title,r.borrowed_at,r.due_date,r.returned_at
   FROM borrowings r
-  JOIN students s ON s.id=r.student_id
+  LEFT JOIN students s ON s.id=r.student_id
+  LEFT JOIN teachers t ON t.id=r.teacher_id
   JOIN books b ON b.id=r.book_id
   ORDER BY r.borrowed_at DESC,r.id DESC")->fetchAll();
 head('Borrow Books (QR Scan)');
@@ -47,30 +51,48 @@ ui_css();
 <div class="pg">
 
 <div class="card scan noprint">
-  <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Borrow books</h3><p>Use a USB scanner (cursor stays in the box) or the camera.</p></div></div>
+  <div class="ph"><span class="pico"><?=ic('books')?></span><div><h3>Borrow books</h3><p>Use a USB scanner (cursor stays in the box) or the camera.</p></div></div>
   <div class="steps">
-    <span class="step on" id="s1"><i>1</i>Scan student QR</span>
+    <span class="step on" id="s1"><i>1</i>Scan student QR or teacher pass</span>
     <span class="step" id="s2"><i>2</i>Scan each book QR</span>
   </div>
   <div class="scanwrap"><?=ic('scan')?><input id="scan" class="big" placeholder="Scan QR here..." autocomplete="off" autofocus></div>
   <div class="fact">
     <button id="cam" type="button" class="ghost"><?=ic('camera')?><span class="camtxt">Use Camera</span></button>
     <select id="cam-select" class="cam-select" aria-label="Choose camera" hidden></select>
-    <button id="reset" type="button" class="ghost"><?=ic('user')?>New Student</button>
+    <button id="reset" type="button" class="ghost"><?=ic('user')?>New Borrower</button>
   </div>
   <div id="reader" hidden></div>
   <p id="cam-status" class="cam-status" role="status" aria-live="polite"></p>
 </div>
 
-<div class="card noprint" id="who"><div class="whocard"><div class="av off"><?=ic('user')?></div><div><div class="nm">No student scanned yet.</div><div class="sub">Scan a student QR to begin.</div></div></div></div>
+<div class="card noprint" id="who"><div class="whocard"><div class="av off"><?=ic('user')?></div><div><div class="nm">No borrower scanned yet.</div><div class="sub">Scan a student QR or teacher pass to begin.</div></div></div></div>
 
 <div id="log" class="noprint"></div>
+<div id="scan-feedback" class="scan-feedback" role="dialog" aria-modal="true" aria-labelledby="scan-feedback-title" hidden>
+  <div class="scan-feedback-card">
+    <div class="scan-feedback-icon" aria-hidden="true">✓</div>
+    <h2 id="scan-feedback-title"></h2>
+    <p id="scan-feedback-message"></p>
+    <div id="scan-feedback-profile" class="scan-feedback-profile" hidden>
+      <div id="scan-feedback-photo" class="scan-feedback-photo"></div>
+      <div class="scan-feedback-profile-copy">
+        <strong id="scan-feedback-name"></strong>
+        <span id="scan-feedback-id"></span>
+        <small id="scan-feedback-meta"></small>
+      </div>
+    </div>
+    <strong id="scan-feedback-details" class="scan-feedback-details"></strong>
+    <p id="scan-feedback-status" class="scan-feedback-status" role="status" aria-live="polite"></p>
+    <button id="scan-feedback-close" class="scan-feedback-close" type="button">Continue scanning</button>
+  </div>
+</div>
 
 <div class="card print-history">
   <div class="history-heading">
-    <div class="ph"><span class="pico"><?=ic('clock')?></span><div><h3>Borrow History</h3><p>All borrowed books and their return status.</p></div></div>
+    <div class="ph"><span class="pico"><?=ic('history')?></span><div><h3>Borrow History</h3><p>All borrowed books and their return status.</p></div></div>
     <span class="badge" id="history-count"><?=count($history)?> record<?=count($history)==1?'':'s'?></span>
-    <a class="btn ghost noprint" href="history.php?type=borrow"><?=ic('clock')?>All History</a>
+    <a class="btn ghost noprint" href="history.php?type=borrow"><?=ic('history')?>All History</a>
     <button class="ghost noprint" type="button" onclick="window.print()"><?=ic('print')?>Print History</button>
   </div>
   <div class="print-heading">
@@ -79,22 +101,22 @@ ui_css();
   </div>
   <div class="tw">
     <table>
-      <tr><th>Student No.</th><th>Student</th><th>Book</th><th>Borrowed</th><th>Due</th><th>Returned</th><th>Status</th></tr>
+      <tr><th>Borrower ID</th><th>Borrower</th><th>Book</th><th>Borrowed</th><th>Due</th><th>Returned</th><th>Status</th></tr>
       <tbody id="history-rows">
       <?php foreach($history as $r):
         $returned=!empty($r['returned_at']);
-        $late=$returned
+        $late=!empty($r['due_date'])&&($returned
           ? substr($r['returned_at'],0,10)>$r['due_date']
-          : $r['due_date']<date('Y-m-d');
+          : $r['due_date']<date('Y-m-d'));
         $status=$returned?($late?'Returned late':'Returned'):($late?'Overdue':'Borrowed');
         $statusClass=$late?'late':($returned?'ok':'out');
       ?>
       <tr>
-        <td><?=h($r['student_no'])?></td>
-        <td><?=h($r['name'])?></td>
+        <td><?=h($r['borrower_no'])?></td>
+        <td><?=h($r['borrower_name'])?> <small class="muted">(<?=h($r['borrower_type'])?>)</small></td>
         <td><?=h($r['title'])?></td>
         <td class="muted"><?=h(date('M j, Y · h:i A',strtotime($r['borrowed_at'])))?></td>
-        <td class="muted"><?=h(date('M j, Y',strtotime($r['due_date'])))?></td>
+        <td class="muted"><?= $r['due_date']?h(date('M j, Y',strtotime($r['due_date']))):'—' ?></td>
         <td><?= $returned?h(date('M j, Y · h:i A',strtotime($r['returned_at']))):'—' ?></td>
         <td><span class="pill <?=$statusClass?>"><?=h($status)?></span></td>
       </tr>
@@ -107,16 +129,19 @@ ui_css();
 
 </div>
 <?php foot('<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script><script>
-let stu=null;
-const EMPTY=\'<div class="whocard"><div class="av off">?</div><div><div class="nm">No student scanned yet.</div><div class="sub">Scan a student QR to begin.</div></div></div>\';
+let borrower=null;
+const EMPTY=\'<div class="whocard"><div class="av off">?</div><div><div class="nm">No borrower scanned yet.</div><div class="sub">Scan a student QR or teacher pass to begin.</div></div></div>\';
 function steps(on){s1.className="step"+(on?" done":" on");s2.className="step"+(on?" on":"");}
 async function handle(v){
- if(v.startsWith("STU:")||!stu&&!v.startsWith("BK:")){const r=await api("student",{code:v});flash(r.ok,r.msg);
-  if(r.ok){stu=r.student.student_no;
-   who.innerHTML=\'<div class="whocard"><div class="av">\'+esc((r.student.name||"?").trim().charAt(0).toUpperCase())+\'</div><div><div class="nm">\'+esc(r.student.name)+\'</div><div class="sub">\'+esc(r.student.student_no)+\'</div></div><div class="loans"><b>\'+esc(String(r.active))+\'</b><small>Active loans</small></div></div>\';
-   steps(true);}return;}
- if(!stu){flash(false,"Scan the student QR first.");return;}
- const r=await api("borrow",{student:stu,code:v});
+ if(window.scanFeedbackOpen)return;
+ prepareScanFeedbackAudio();
+ if(v.startsWith("STU:")||v.startsWith("TCH:")||!borrower&&!v.startsWith("BK:")){const r=await api("student",{code:v});flash(r.ok,r.msg);
+  if(r.ok){borrower=(r.borrower_type==="teacher"?"TCH:":"STU:")+r.borrower_code;
+   who.innerHTML=\'<div class="whocard"><div class="av">\'+esc((r.student.name||"?").trim().charAt(0).toUpperCase())+\'</div><div><div class="nm">\'+esc(r.student.name)+\'</div><div class="sub">\'+esc(r.borrower_type==="teacher"?"Teacher pass · ":"Student ID · ")+esc(r.borrower_code)+\'</div></div><div class="loans"><b>\'+esc(String(r.active))+\'</b><small>Active loans</small></div></div>\';
+   steps(true);
+   showScanFeedback("Borrower identified","Ready to scan books for this borrower.",r.profile,"",()=>scan.focus());}return;}
+ if(!borrower){flash(false,"Scan a student QR or teacher pass first.");return;}
+ const r=await api("borrow",{student:borrower,code:v});
  flash(r.ok,r.ok?"QR SCAN COMPLETE — "+r.msg:r.msg);
  if(r.ok){
   const body=document.getElementById("history-rows");
@@ -124,7 +149,7 @@ async function handle(v){
   if(empty)empty.parentElement.remove();
   const row=document.createElement("tr");
   const values=[
-   [r.student_no,""],[r.student_name,""],[r.title,""],
+   [r.student_no,""],[r.student_name+" ("+(r.borrower_type==="teacher"?"Teacher":"Student")+")",""],[r.title,""],
    [r.borrowed_display,"muted"],[r.due_display,"muted"],["—",""],
    ["Borrowed","pill out"]
   ];
@@ -132,7 +157,8 @@ async function handle(v){
   body.prepend(row);
   const count=body.querySelectorAll("tr").length;
   document.getElementById("history-count").textContent=count+" record"+(count===1?"":"s");
+  showScanFeedback("Book borrowed","Loan recorded successfully.",r.profile,r.title,()=>scan.focus());
  }}
-bindScanner(scan,handle);cam.onclick=()=>startCamera("reader",handle);
-reset.onclick=()=>{stu=null;who.innerHTML=EMPTY;steps(false);scan.focus();};
+bindScanner(scan,handle);cam.onclick=()=>{prepareScanFeedbackAudio();startCamera("reader",handle);};
+reset.onclick=()=>{borrower=null;who.innerHTML=EMPTY;steps(false);scan.focus();};
 </script>');
