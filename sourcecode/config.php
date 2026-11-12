@@ -240,7 +240,7 @@
         
         $nav=['index.php'=>['Dashboard','dashboard'],'students.php'=>['Students','users']];
         if($role==='admin'||$role==='librarian')$nav['teachers.php']=['Teachers','users'];
-        $nav+=['books.php'=>['Books','books'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Time-In / Out','clock'],'history.php'=>['History','history'],'account.php'=>['My Account','user-circle']];
+        $nav+=['books.php'=>['Books','books'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Attendance','clock'],'history.php'=>['History','history'],'account.php'=>['My Account','user-circle']];
         if($role==='admin')$nav['account.php']=['Account & Requests','send'];
         if($role=='student'){
           $nav=$p==='student.php'
