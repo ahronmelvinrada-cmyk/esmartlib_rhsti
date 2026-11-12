@@ -132,10 +132,11 @@ INSERT INTO `book_requests` (`id`, `student_id`, `book_id`, `message`, `admin_re
 
 CREATE TABLE `borrowings` (
   `id` int(11) NOT NULL,
-  `student_id` int(11) NOT NULL,
+  `student_id` int(11) DEFAULT NULL,
+  `teacher_id` int(11) DEFAULT NULL,
   `book_id` int(11) NOT NULL,
   `borrowed_at` datetime NOT NULL,
-  `due_date` date NOT NULL,
+  `due_date` date DEFAULT NULL,
   `returned_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -274,6 +275,21 @@ CREATE TABLE `students` (
   `account_active` tinyint(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `teachers`
+--
+
+CREATE TABLE `teachers` (
+  `id` int(11) NOT NULL,
+  `teacher_no` varchar(30) NOT NULL,
+  `name` varchar(120) NOT NULL,
+  `photo` varchar(255) DEFAULT NULL,
+  `account_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 --
 -- Dumping data for table `students`
 --
@@ -400,8 +416,9 @@ CREATE TABLE `users` (
   `id` int(11) NOT NULL,
   `username` varchar(50) DEFAULT NULL,
   `password` varchar(255) DEFAULT NULL,
-  `role` enum('admin','librarian','student') DEFAULT 'librarian',
+  `role` enum('admin','librarian','student','teacher') DEFAULT 'librarian',
   `student_id` int(11) DEFAULT NULL,
+  `teacher_id` int(11) DEFAULT NULL,
   `must_change` tinyint(1) NOT NULL DEFAULT 0,
   `email` varchar(254) DEFAULT NULL,
   `email_verified_at` datetime DEFAULT NULL
@@ -440,7 +457,7 @@ ALTER TABLE `attendance`
 -- Indexes for table `books`
 --
 ALTER TABLE `books`
-  ADD PRIMARY KEY (`id`),
+  ADD PRIMARY KEY (`id`), 
   ADD UNIQUE KEY `accession_no` (`accession_no`);
 
 --
@@ -458,6 +475,7 @@ ALTER TABLE `book_requests`
 ALTER TABLE `borrowings`
   ADD PRIMARY KEY (`id`),
   ADD KEY `student_id` (`student_id`),
+  ADD KEY `teacher_id` (`teacher_id`),
   ADD KEY `book_id` (`book_id`);
 
 --
@@ -509,6 +527,13 @@ ALTER TABLE `students`
   ADD UNIQUE KEY `student_no` (`student_no`);
 
 --
+-- Indexes for table `teachers`
+--
+ALTER TABLE `teachers`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `teacher_no` (`teacher_no`);
+
+--
 -- Indexes for table `student_login_locks`
 --
 ALTER TABLE `student_login_locks`
@@ -520,6 +545,7 @@ ALTER TABLE `student_login_locks`
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `username` (`username`),
+  ADD KEY `teacher_id` (`teacher_id`),
   ADD UNIQUE KEY `users_email` (`email`);
 
 --
@@ -575,6 +601,12 @@ ALTER TABLE `students`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=93;
 
 --
+-- AUTO_INCREMENT for table `teachers`
+--
+ALTER TABLE `teachers`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
@@ -595,10 +627,10 @@ ALTER TABLE `attendance`
 --
 ALTER TABLE `borrowings`
   ADD CONSTRAINT `borrowings_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`),
-  ADD CONSTRAINT `borrowings_ibfk_2` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`);
+  ADD CONSTRAINT `borrowings_ibfk_2` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`),
+  ADD CONSTRAINT `borrowings_ibfk_3` FOREIGN KEY (`teacher_id`) REFERENCES `teachers` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-
