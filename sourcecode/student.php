@@ -131,15 +131,15 @@ head('My Dashboard');ui_css();?>
 <?php if($m)echo '<div class="note'.(in_array($m,['Password changed.','Profile photo updated.','Profile photo removed.','Your booking request was sent to the library admin.','Booking request cancelled.'],true)?'':' bad').'">'.ic('info').'<span>'.h($m).'</span></div>';?>
 
 <nav class="student-bottom-nav" aria-label="Student dashboard sections">
-  <a href="#dashboard" class="active"><?=ic('user')?><span> Dashboard</span></a>
-  <a href="#pass"><?=ic('file')?><span>Library Pass</span></a>
-  <a href="#booking"><?=ic('book')?><span>Booking</span></a>
-  <a href="#borrowed"><?=ic('book')?><span> Borrowed</span></a>
-  <a href="#history"><?=ic('return')?><span>History</span></a>
+  <a href="#dashboard" class="active"><?=ic('dashboard')?><span> Dashboard</span></a>
+  <a href="#pass"><?=ic('id-card')?><span>Library Pass</span></a>
+  <a href="#booking"><?=ic('send')?><span>Booking</span></a>
+  <a href="#borrowed"><?=ic('books')?><span> Borrowed</span></a>
+  <a href="#history"><?=ic('history')?><span>History</span></a>
   <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
 </nav>
 
-<!-- Profile -->
+<!-- Profile -->  
 <section class="student-section" id="dashboard">
 <div class="card hero2">
   <form method="post" enctype="multipart/form-data" id="phform" class="pcol">
@@ -182,7 +182,7 @@ head('My Dashboard');ui_css();?>
 
 <!-- Online booking -->
 <section class="student-section card" id="booking">
-  <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Online book booking</h3><p>Choose an available book and send a message to the library admin.</p></div></div>
+  <div class="ph"><span class="pico"><?=ic('send')?></span><div><h3>Online book booking</h3><p>Choose an available book and send a message to the library admin.</p></div></div>
   <form method="post">
     <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
     <div class="fgrid">
@@ -200,7 +200,7 @@ head('My Dashboard');ui_css();?>
     <?php if(!array_filter($catalogBooks,fn($book)=>(int)$book['bookable']>0)):?><p class="help">No copies are currently available to book.</p><?php endif;?>
   </form>
 
-  <div class="ph" style="margin-top:24px"><div><h3>My booking requests</h3><p>Admin replies and booking status appear here.</p></div><span class="badge"><?=count($bookingRows)?> request<?=count($bookingRows)===1?'':'s'?></span></div>
+  <div class="ph" style="margin-top:24px"><span class="pico"><?=ic('send')?></span><div><h3>My booking requests</h3><p>Admin replies and booking status appear here.</p></div><span class="badge"><?=count($bookingRows)?> request<?=count($bookingRows)===1?'':'s'?></span></div>
   <div class="tw"><table class="rt">
     <tr><th>Book</th><th>Your message</th><th>Admin reply</th><th>Status</th><th>Requested</th><th>Action</th></tr>
     <?php foreach($bookingRows as $request):
@@ -228,7 +228,7 @@ head('My Dashboard');ui_css();?>
 
 <!-- Currently borrowed -->
 <section class="student-section card" id="borrowed">
-  <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Currently borrowed</h3><p>Return on or before the due date.</p></div><span class="badge"><?=count($cur)?> book<?=count($cur)==1?'':'s'?></span></div>
+  <div class="ph"><span class="pico"><?=ic('books')?></span><div><h3>Currently borrowed</h3><p>Return on or before the due date.</p></div><span class="badge"><?=count($cur)?> book<?=count($cur)==1?'':'s'?></span></div>
   <div class="tw"><table class="rt">
     <tr><th>Book</th><th>Author</th><th>Borrowed</th><th>Due</th><th>Status</th></tr>
     <?php foreach($cur as $l){$d=(int)((strtotime($l['due_date'])-strtotime($today))/86400);
@@ -242,7 +242,7 @@ head('My Dashboard');ui_css();?>
 <!-- History + attendance -->
 <div class="two">
   <section class="student-section card" id="history">
-    <div class="ph"><span class="pico"><?=ic('return')?></span><div><h3>Borrowing history</h3></div></div>
+    <div class="ph"><span class="pico"><?=ic('history')?></span><div><h3>Borrowing history</h3></div></div>
     <div class="tw"><table class="rt">
       <tr><th>Book</th><th>Borrowed</th><th>Returned</th></tr>
       <?php foreach($hist as $l)echo '<tr><td data-label="Book">'.h($l['title']).'</td><td class="muted" data-label="Borrowed">'.h(substr($l['borrowed_at'],0,10)).'</td><td data-label="Returned">'.h(substr($l['returned_at'],0,10)).'</td></tr>';
