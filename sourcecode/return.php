@@ -5,6 +5,21 @@ $rows=$pdo->query("SELECT COALESCE(s.student_no,t.teacher_no) AS borrower_no,
   FROM borrowings r LEFT JOIN students s ON s.id=r.student_id
   LEFT JOIN teachers t ON t.id=r.teacher_id JOIN books b ON b.id=r.book_id
   WHERE r.returned_at IS NOT NULL ORDER BY r.returned_at DESC,r.id DESC")->fetchAll();
+if (($_GET['download'] ?? '') === 'history') {
+  require_once 'export_helper.php';
+  $exportRows=[];
+  foreach($rows as $r){
+    $late=!empty($r['due_date'])&&strtotime(substr($r['returned_at'],0,10))>strtotime($r['due_date']);
+    $exportRows[]=[
+      $r['borrower_no'],$r['borrower_name'].' ('.$r['borrower_type'].')',$r['title'],
+      date('M j, Y · h:i A',strtotime($r['borrowed_at'])),
+      $r['due_date']?date('M j, Y',strtotime($r['due_date'])):'',
+      date('M j, Y · h:i A',strtotime($r['returned_at'])),$late?'Late':'On time'
+    ];
+  }
+  export_excel_download('Return_History',
+    ['Borrower ID','Borrower','Book','Borrowed','Due','Returned','Status'],$exportRows);
+}
 head('Return Books (QR Scan)');ui_css();?>
 <style>
 .pg .history-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -60,7 +75,7 @@ head('Return Books (QR Scan)');ui_css();?>
     <div class="ph"><span class="pico"><?=ic('history')?></span><div><h3>Return History</h3><p>All returned books.</p></div></div>
     <span class="badge"><?=count($rows)?> record<?=count($rows)==1?'':'s'?></span>
     <a class="btn ghost noprint" href="history.php?type=return"><?=ic('history')?>All Return History</a>
-    <button class="ghost noprint" type="button" onclick="window.print()"><?=ic('print')?>Print History</button>
+    <a class="btn ghost noprint" href="?download=history"><?=ic('download')?>Download History (Excel)</a>
   </div>
   <div class="print-heading">
     <h2>Return History</h2>
