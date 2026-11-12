@@ -59,6 +59,37 @@ usort($records, static function ($a, $b) {
 });
 
 $title = $type === 'borrow' ? 'Borrow History' : ($type === 'return' ? 'Return History' : ($type === 'attendance' ? 'Attendance History' : 'All History'));
+if (($_GET['download'] ?? '') === 'history') {
+    require_once 'export_helper.php';
+    $exportRows = [];
+    foreach ($records as $record) {
+        if ($record['event_type'] === 'borrow') {
+            $returned = !empty($record['returned_at']);
+            $late = !empty($record['due_date']) && ($returned
+                ? substr($record['returned_at'], 0, 10) > $record['due_date']
+                : $record['due_date'] < date('Y-m-d'));
+            $details = ($returned ? ($late ? 'Returned late' : 'Returned') : ($late ? 'Overdue' : 'Borrowed'))
+                . ' · Due ' . ($record['due_date'] ? date('M j, Y', strtotime($record['due_date'])) : 'No due date')
+                . ($returned ? ' · Returned ' . date('M j, Y · h:i A', strtotime($record['returned_at'])) : '');
+        } else {
+            $details = 'Time-in ' . date('h:i A', strtotime($record['time_in']))
+                . ' · Time-out ' . ($record['time_out'] ? date('h:i A', strtotime($record['time_out'])) : '—');
+        }
+        $exportRows[] = [
+            date('M j, Y · h:i A', strtotime($record['occurred_at'])),
+            $record['event_type'] === 'borrow' ? 'Borrow' : 'Attendance',
+            $record['name'],
+            $record['borrower_no'],
+            $record['borrower_type'],
+            trim(($record['grade'] ?? '') . ' ' . ($record['section'] ?? '')),
+            $record['book_title'] ?: '',
+            $details,
+        ];
+    }
+    export_excel_download('History',
+        ['Date & Time', 'Type', 'Borrower', 'Borrower ID', 'Borrower Type', 'Grade / Section', 'Book', 'Details'],
+        $exportRows);
+}
 head($title);
 ui_css();
 ?>
@@ -80,7 +111,7 @@ ui_css();
       <span class="pico"><?=ic('history')?></span>
       <div><h3><?=h($title)?></h3><p>Borrow scans include the student or teacher and book. Attendance includes time-in and time-out.</p></div>
       <span class="badge history-count"><?=count($records)?> record<?=count($records) === 1 ? '' : 's'?></span>
-      <button class="ghost noprint" type="button" onclick="window.print()"><?=ic('print')?>Print History</button>
+      <a class="btn ghost noprint" href="?<?=h(http_build_query(['type'=>$type,'q'=>$search,'download'=>'history']))?>"><?=ic('download')?>Download History (Excel)</a>
     </div>
     <div class="history-tabs noprint">
       <a class="btn ghost <?=$type === 'all' ? 'active' : ''?>" href="history.php">All History</a>
