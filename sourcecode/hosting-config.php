@@ -6,4 +6,3 @@ return [
     'user' => 'if0_43274999',
     'pass' => 'cNtHiR5yDXl5wDU',
 ];
-
