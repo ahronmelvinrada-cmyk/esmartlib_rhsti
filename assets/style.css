@@ -51,6 +51,24 @@ th{background:var(--leaf);color:var(--gd);font-size:14px;font-weight:700}th,td{t
 .card table{border:0}
 .msg{padding:12px 14px;border-radius:10px;margin:8px 0;font-weight:600}.good{background:var(--leaf);color:#14532d}.bad{color:var(--red)}.msg.bad{background:var(--redbg)}
 .note{background:#fff6dd;border:1px solid #f0dca0;padding:10px 14px;border-radius:10px}.muted{color:var(--mute)}
+.scan-feedback[hidden]{display:none}
+.scan-feedback{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;padding:20px;background:rgba(8,24,15,.72);backdrop-filter:blur(5px)}
+.scan-feedback-card{width:min(100%,440px);padding:30px 24px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:24px;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:scan-feedback-pop .25s ease-out}
+.scan-feedback-icon{display:grid;place-items:center;width:72px;height:72px;margin:0 auto 16px;border-radius:22px;background:var(--leaf);color:var(--g);font-size:36px;font-weight:800}
+.scan-feedback-card h2{margin:0 0 6px;font-size:25px;color:var(--g)}
+.scan-feedback-card p{margin:0 0 12px;color:var(--mute)}
+.scan-feedback-profile[hidden]{display:none}
+.scan-feedback-profile{display:flex;align-items:center;gap:14px;margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--bg);text-align:left}
+.scan-feedback-photo,.scan-feedback-photo img,.scan-feedback-photo span{width:72px;height:72px;flex:none;border-radius:20px;object-fit:cover}
+.scan-feedback-photo span{display:grid;place-items:center;background:var(--leaf);color:var(--gd);font-size:28px;font-weight:800}
+.scan-feedback-profile-copy{display:grid;gap:4px;min-width:0}
+.scan-feedback-profile-copy strong{font-size:17px;overflow-wrap:anywhere}
+.scan-feedback-profile-copy span{color:var(--gd);font-size:13px;font-weight:700}
+.scan-feedback-profile-copy small{color:var(--mute);font-size:12px}
+.scan-feedback-details{display:block;margin:0 0 10px;font-size:18px;font-weight:800;overflow-wrap:anywhere}
+.scan-feedback-status{min-height:1em;margin:8px 0 0!important;font-size:12px}
+.scan-feedback-close{width:100%;margin-top:18px!important}
+@keyframes scan-feedback-pop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
 .qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.qrgrid .card{margin:0}
 .qrcard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}.qrcard small{color:var(--mute)}.qr{padding:6px;background:#fff}
 #reader{max-width:420px;margin-top:10px;border-radius:12px;overflow:hidden}
