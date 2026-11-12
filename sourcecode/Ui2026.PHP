@@ -14,6 +14,14 @@ function ic($k){
         'trash'    => '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
         'info'     => '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>',
         'user'     => '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+        'dashboard'=> '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+        'id-card'  => '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 17a3 3 0 0 1 6 0m3-6h3m-3 4h3M9 5V3h6v2"/>',
+        'books'    => '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10v17H5.5A1.5 1.5 0 0 1 4 18.5zM10 5h4.5A1.5 1.5 0 0 1 16 6.5v13a1.5 1.5 0 0 1-1.5 1.5H10m6-14h2.5A1.5 1.5 0 0 1 20 8.5v10a1.5 1.5 0 0 1-1.5 1.5H16"/>',
+        'user-circle'=>'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/>',
+        'send'     => '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+        'clipboard-list'=>'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M9 10h6m-6 4h6m-6 4h3"/>',
+        'history'  => '<path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/>',
+        'settings' => '<path d="M9.6 2h4.8l.7 3.1a7.4 7.4 0 0 1 1.8 1l2.9-1.2 2.4 4.2-2.3 2.1v2l2.3 2.1-2.4 4.2-2.9-1.2a7.4 7.4 0 0 1-1.8 1l-.7 3.1H9.6l-.7-3.1a7.4 7.4 0 0 1-1.8-1l-2.9 1.2-2.4-4.2 2.3-2.1v-2L1.8 9.1l2.4-4.2 2.9 1.2a7.4 7.4 0 0 1 1.8-1L9.6 2Z"/><circle cx="12" cy="12" r="3.2"/>',
         'book'     => '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Z"/><path d="M19 19v2H6"/>',
         'file'     => '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4Z"/><path d="M14 3v4h4"/>',
         'clock'    => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -47,6 +55,50 @@ function photo_col($pdo){
 }
 function photo_path_ok($p){ return $p && strpos($p,'uploads/students/')===0 && strpos($p,'..')===false; }
 function photo_delete_file($p){ if(photo_path_ok($p)){ $f=__DIR__.'/'.$p; if(is_file($f)) @unlink($f); } }
+function teacher_photo_path_ok($p){ return $p && strpos($p,'uploads/teachers/')===0 && strpos($p,'..')===false; }
+function teacher_photo_save($pdo,$teacherId,$file){
+    $error=$file['error']??UPLOAD_ERR_NO_FILE;
+    if($error===UPLOAD_ERR_NO_FILE)return 'Choose a photo first.';
+    if($error===UPLOAD_ERR_INI_SIZE||$error===UPLOAD_ERR_FORM_SIZE)return 'That photo is too large for the server.';
+    if($error!==UPLOAD_ERR_OK)return 'Photo upload failed. Please try again.';
+    if(($file['size']??0)>8*1024*1024)return 'Photo is too large (maximum 8 MB).';
+    $image=@getimagesize($file['tmp_name']??'');
+    $extensions=[IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_WEBP=>'webp'];
+    if(!$image||!isset($extensions[$image[2]]))return 'Only JPG, PNG, or WEBP photos are allowed.';
+    $directory=__DIR__.'/uploads/teachers';
+    if(!is_dir($directory)&&!@mkdir($directory,0755,true))return 'Cannot create the teacher photo folder. Check hosting folder permissions.';
+    if(!is_writable($directory))return 'The teacher photo folder is not writable. Check hosting folder permissions.';
+    $protection=$directory.'/.htaccess';
+    if(!is_file($protection)&&@file_put_contents($protection,"<FilesMatch \"\\.(php|phtml|phar)$\">\nRequire all denied\n</FilesMatch>\n")===false){
+        return 'Could not protect the teacher photo folder. Check hosting folder permissions.';
+    }
+    try{$filename='t'.(int)$teacherId.'_'.bin2hex(random_bytes(8)).'.'.$extensions[$image[2]];}
+    catch(Throwable $e){return 'Could not create a safe photo filename.';}
+    if(!move_uploaded_file($file['tmp_name'],$directory.'/'.$filename))return 'Could not save the photo. Please try again.';
+    $relativePath='uploads/teachers/'.$filename;
+    try{
+        $query=$pdo->prepare("SELECT photo FROM teachers WHERE id=?");
+        $query->execute([$teacherId]);
+        $oldPhoto=$query->fetchColumn();
+        if($oldPhoto===false){@unlink($directory.'/'.$filename);return 'Teacher account not found.';}
+        $pdo->prepare("UPDATE teachers SET photo=? WHERE id=?")->execute([$relativePath,$teacherId]);
+        if($oldPhoto&&$oldPhoto!==$relativePath&&teacher_photo_path_ok($oldPhoto)&&is_file(__DIR__.'/'.$oldPhoto))@unlink(__DIR__.'/'.$oldPhoto);
+    }catch(PDOException $e){
+        @unlink($directory.'/'.$filename);
+        error_log('Teacher profile photo update failed: '.$e->getMessage());
+        return 'Could not update your profile photo. Please try again.';
+    }
+    return '';
+}
+function teacher_photo_remove($pdo,$teacherId){
+    $query=$pdo->prepare("SELECT photo FROM teachers WHERE id=?");
+    $query->execute([$teacherId]);
+    $oldPhoto=$query->fetchColumn();
+    if($oldPhoto===false)return false;
+    $pdo->prepare("UPDATE teachers SET photo=NULL WHERE id=?")->execute([$teacherId]);
+    if($oldPhoto&&teacher_photo_path_ok($oldPhoto)&&is_file(__DIR__.'/'.$oldPhoto))@unlink(__DIR__.'/'.$oldPhoto);
+    return true;
+}
 function photo_remove($pdo,$sid){
     $s=$pdo->prepare("SELECT photo FROM students WHERE id=?"); $s->execute([$sid]); $old=$s->fetchColumn();
     $pdo->prepare("UPDATE students SET photo=NULL WHERE id=?")->execute([$sid]);
@@ -105,26 +157,58 @@ function library_pass($student,$logoPath='assets/rhsti-school-logo.jpg',$library
 ?>
 <div class="library-pass-print">
   <div class="pass-actions noprint">
-    <div><strong>Library pass</strong><small>Print a wallet-size pass for this student.</small></div>
-    <button type="button" onclick="printLibraryPass()"><?=ic('print')?>Print Library Pass</button>
+    <div><strong>Library pass</strong><small>Download both wallet-size sides as one letter-size image. Print at 100% / Actual size.</small></div>
+    <button type="button" onclick="downloadLibraryPass(this)"><?=ic('download')?>Download Pass Image</button>
+    <small class="pass-download-status" role="status" aria-live="polite"></small>
   </div>
-  <article class="library-pass" aria-label="Student library pass">
-    <div class="pass-top">
-      <span class="pass-brand"><?php if($logoPathOk):?><img src="<?=h($logoPath)?>?v=<?=filemtime(__DIR__.'/'.$logoPath)?>" alt=""><?php else:?><i>e</i><?php endif;?><span><?=h($libraryName)?><small><?=h($schoolName)?></small></span></span>
-      <span class="pass-tag">LIBRARY PASS</span>
+  <div class="pass-sides">
+    <div class="pass-side-wrap">
+      <small class="pass-side-label">FRONT</small>
+      <article class="library-pass library-pass-front" aria-label="Front of student library pass">
+        <div class="pass-top">
+          <span class="pass-brand"><?php if($logoPathOk):?><img src="<?=h($logoPath)?>?v=<?=filemtime(__DIR__.'/'.$logoPath)?>" alt=""><?php else:?><i>e</i><?php endif;?><span><?=h($libraryName)?><small><?=h($schoolName)?></small></span></span>
+          <span class="pass-tag">LIBRARY PASS</span>
+        </div>
+        <div class="pass-content">
+          <?=avatar($student,'pass-photo')?>
+          <div class="pass-details">
+            <small>STUDENT NAME</small>
+            <h2><?=h($student['name'])?></h2>
+            <span class="pass-id-label">STUDENT ID</span>
+            <strong class="pass-id"><?=h($student['student_no'])?></strong>
+          </div>
+          <div class="qr pass-qr" data-code="STU:<?=h($student['student_no'])?>"></div>
+        </div>
+        <div class="pass-bottom"><span>STUDENT IDENTIFICATION</span><span>SCAN FOR LIBRARY ACCESS</span></div>
+      </article>
     </div>
-    <div class="pass-content">
-      <?=avatar($student,'pass-photo')?>
-      <div class="pass-details">
-        <small>STUDENT NAME</small>
-        <h2><?=h($student['name'])?></h2>
-        <span class="pass-id-label">STUDENT ID</span>
-        <strong class="pass-id"><?=h($student['student_no'])?></strong>
-      </div>
-      <div class="qr pass-qr" data-code="STU:<?=h($student['student_no'])?>"></div>
+    <div class="pass-side-wrap">
+      <small class="pass-side-label">BACK</small>
+      <article class="library-pass library-pass-back" aria-label="Back of student library pass">
+        <div class="pass-back-heading">
+          <span class="pass-brand"><?php if($logoPathOk):?><img src="<?=h($logoPath)?>?v=<?=filemtime(__DIR__.'/'.$logoPath)?>" alt=""><?php else:?><i>e</i><?php endif;?><span><?=h($schoolName)?><small>STUDENT DETAILS</small></span></span>
+          <span class="pass-tag">STUDENT PASS</span>
+        </div>
+        <div class="pass-back-details">
+          <div><small>EMAIL</small><strong><?=h($student['email']??'')?:'Add email in My Profile'?></strong></div>
+          <div><small>SECTION</small><strong><?=h($student['section']??'')?:'—'?></strong></div>
+          <div><small>GRADE</small><strong><?=h($student['grade']??'')?:'—'?></strong></div>
+          <div><small>STRAND / TRACK</small><strong><?=h(trim(($student['strand']??'').' / '.($student['track']??''),' /'))?:'—'?></strong></div>
+        </div>
+        <div class="pass-signature">
+          <div class="pass-signature-line">
+            <small>STUDENT SIGNATURE</small>
+            <canvas class="pass-signature-canvas" aria-label="Draw your signature here" role="img"></canvas>
+          </div>
+          <div class="pass-signature-tools noprint">
+            <span>Draw your signature above</span>
+            <button type="button" class="ghost" onclick="clearPassSignature(this)">Clear</button>
+          </div>
+        </div>
+        <div class="pass-back-footer"><span>PROPERTY OF <?=h(strtoupper($schoolName))?></span><span>IF FOUND, PLEASE RETURN TO THE LIBRARY</span></div>
+      </article>
     </div>
-    <div class="pass-bottom"><span>STUDENT IDENTIFICATION</span><span>SCAN FOR LIBRARY ACCESS</span></div>
-  </article>
+  </div>
 </div>
 <?php }
 
@@ -325,47 +409,352 @@ function ui_css(){ ui_side(); ?>
 .pg .pass-qr img,.pg .pass-qr canvas{display:block;width:98px!important;height:98px!important;border-radius:4px}
 .pg .pass-bottom{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid rgba(31,122,70,.2);color:#557663;font-size:8px;font-weight:700;letter-spacing:.1em}
 @media(max-width:520px){.pg .pass-actions{align-items:stretch;flex-direction:column;gap:9px}.pg .pass-actions button{justify-content:center;min-height:44px}.pg .library-pass{padding:16px;border-radius:17px}.pg .pass-content{gap:10px}.pg .library-pass .pass-photo{width:58px;height:58px;font-size:22px}.pg .library-pass .pass-qr{width:82px;height:82px;padding:5px}.pg .pass-qr img,.pg .pass-qr canvas{width:72px!important;height:72px!important}.pg .pass-brand{font-size:13px}.pg .pass-brand i{width:32px;height:32px;font-size:20px}.pg .pass-tag{padding:5px 7px;font-size:7px}.pg .pass-details h2{font-size:clamp(13px,3.8vw,19px)}.pg .pass-id{font-size:12px}.pg .pass-bottom{font-size:6px}}
+.pg .pass-actions{max-width:1100px}
+.pg .pass-sides{display:grid;grid-template-columns:repeat(2,minmax(0,324px));gap:14px;width:min(100%,680px)}
+.pg .pass-side-wrap{min-width:0}
+.pg .pass-side-label{display:block;margin:0 0 6px 4px;color:var(--mute);font-size:10px;font-weight:800;letter-spacing:.12em}
+.pg .library-pass{width:min(100%,324px);max-width:324px;padding:12px 14px;border-radius:12px}
+.pg .pass-content{gap:9px;padding:7px 0}
+.pg .library-pass .pass-photo{width:48px;height:48px;font-size:20px}
+.pg .pass-brand{gap:6px;font-size:10px}
+.pg .pass-brand img,.pg .pass-brand i{width:25px;height:25px;border-radius:7px}
+.pg .pass-brand i{font-size:16px}
+.pg .pass-brand small{margin-top:2px;font-size:7px}
+.pg .pass-tag{padding:4px 6px;font-size:6px}
+.pg .pass-details>small,.pg .pass-id-label{font-size:6px}
+.pg .pass-details h2{margin:3px 0 6px;font-size:13px}
+.pg .pass-id{font-size:9px}
+.pg .library-pass .pass-qr{width:58px;height:58px;padding:3px;border-radius:7px}
+.pg .pass-qr img,.pg .pass-qr canvas{width:52px!important;height:52px!important}
+.pg .pass-bottom{padding-top:5px;font-size:5px}
+.pg .library-pass-back{border-color:#b8d5c9;background:radial-gradient(ellipse at 92% 10%,rgba(83,171,135,.2),transparent 36%),linear-gradient(145deg,#f3f8f4,#e8f2ed);color:#163d32}
+.pg .pass-back-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pg .library-pass-back .pass-brand small{color:#688779}
+.pg .pass-back-details{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;padding:5px 0}
+.pg .pass-back-details>div{min-width:0}
+.pg .pass-back-details small,.pg .pass-signature-line>small{display:block;color:#688779;font-size:6px;font-weight:800;letter-spacing:.1em}
+.pg .pass-back-details strong{display:block;overflow:hidden;margin-top:2px;font-size:8px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
+.pg .pass-signature{margin-top:auto}
+.pg .pass-signature-canvas{display:block;width:100%;height:24px;border-bottom:1px solid #6f9180;touch-action:none;cursor:crosshair}
+.pg .pass-signature-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:3px;color:#688779;font-size:9px}
+.pg .pass-signature-tools button{min-height:26px;margin:0;padding:3px 9px;font-size:10px}
+.pg .pass-back-footer{display:flex;justify-content:space-between;gap:8px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(31,122,70,.2);color:#688779;font-size:5px;font-weight:700;letter-spacing:.08em}
+@media(max-width:760px){.pg .pass-sides{grid-template-columns:minmax(0,324px)}.pg .pass-actions{align-items:stretch;flex-direction:column;gap:9px}.pg .pass-actions button{justify-content:center;min-height:44px}}
 
 @media(max-width:640px){.pg .card{padding:16px}.pg .big{height:60px;font-size:17px}}
-@media print{
-  body.printing-library-pass *{visibility:hidden!important}
-  body.printing-library-pass .app,
-  body.printing-library-pass main,
-  body.printing-library-pass .pg,
-  body.printing-library-pass #pass,
-  body.printing-library-pass .library-pass-print{display:block!important}
-  body.printing-library-pass .library-pass{display:flex!important}
-  body.printing-library-pass .library-pass-print,
-  body.printing-library-pass .library-pass-print *{visibility:visible!important}
-  body.printing-library-pass #pass{width:auto!important;margin:0!important;padding:0!important}
-  body.printing-library-pass .library-pass-print{position:fixed!important;top:0!important;left:0!important;display:block!important;width:auto!important;margin:0!important;padding:0!important}
-  .pg .pass-actions{display:none!important}
-  .pg .library-pass{width:3.375in!important;height:2.125in!important;aspect-ratio:auto!important;margin:0!important;padding:.16in .19in!important;border:0!important;border-radius:.12in!important;box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .pg .pass-brand{font-size:9pt!important}
-  .pg .pass-brand i{width:.28in!important;height:.28in!important;font-size:17pt!important}
-  .pg .pass-brand small{font-size:6pt!important}
-  .pg .pass-tag{padding:4px 7px!important;font-size:5.5pt!important}
-  .pg .pass-content{gap:.12in!important;padding:.08in 0!important}
-  .pg .library-pass .pass-photo{width:.62in!important;height:.62in!important;font-size:21pt!important}
-  .pg .pass-brand img{width:.28in!important;height:.28in!important}
-  .pg .pass-details>small,.pg .pass-id-label{font-size:5.5pt!important}
-  .pg .pass-details h2{margin:3px 0 8px!important;font-size:12pt!important}
-  .pg .pass-id{font-size:9pt!important}
-  .pg .library-pass .pass-qr{width:.83in!important;height:.83in!important;padding:.05in!important}
-  .pg .pass-qr img,.pg .pass-qr canvas{width:.73in!important;height:.73in!important}
-  .pg .pass-bottom{padding-top:5px!important;font-size:5pt!important}
-  body:not(.printing-library-pass) .pg{display:block}
-  body:not(.printing-library-pass) .pg .card,body:not(.printing-library-pass) .pg .qrcard{box-shadow:none!important;transform:none!important;border:1px solid #ccc;border-radius:10px}
-  body:not(.printing-library-pass) .pg .qrgrid{grid-template-columns:repeat(4,1fr);gap:10px}
-  body:not(.printing-library-pass) .pg .meter,body:not(.printing-library-pass) .pg .chip{border:1px solid #ccc;background:#fff}
-}
 @media(prefers-reduced-motion:reduce){.pg *{animation:none!important;transition:none!important}}
 </style>
 <script>
-window.printLibraryPass=function(){
-  document.body.classList.add('printing-library-pass');
-  requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();});});
+window.clearPassSignature=function(button){
+  var canvas=button.closest('.pass-signature').querySelector('.pass-signature-canvas');
+  var context=canvas.getContext('2d');
+  context.clearRect(0,0,canvas.width,canvas.height);
 };
-window.addEventListener('afterprint',function(){document.body.classList.remove('printing-library-pass');});
+window.downloadLibraryPass=function(button){
+  var status=button.parentElement.querySelector('.pass-download-status');
+  button.disabled=true;
+  status.textContent='Preparing your image...';
+  try{
+    var front=document.querySelector('.library-pass-front');
+    var back=document.querySelector('.library-pass-back');
+    var qr=front.querySelector('.pass-qr');
+    if(!qr.querySelector('canvas,img')){
+      if(!window.QRCode)throw new Error('The QR code library is not available. Refresh the page and try again.');
+      new QRCode(qr,{text:qr.dataset.code,width:220,height:220});
+    }
+    var qrImage=qr.querySelector('canvas,img');
+    if(!qrImage)throw new Error('The student QR code could not be generated. Refresh the page and try again.');
+
+    var paper=document.createElement('canvas');
+    paper.width=2550;
+    paper.height=3300;
+    var ctx=paper.getContext('2d');
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,0,paper.width,paper.height);
+    var cardWidth=1012,cardHeight=638,gap=36;
+    var startX=(paper.width-cardWidth*2-gap)/2;
+    var startY=(paper.height-cardHeight)/2;
+    var logo=front.querySelector('.pass-brand img');
+    var photo=front.querySelector('.pass-photo');
+    var signature=back.querySelector('.pass-signature-canvas');
+    function roundedRect(x,y,w,h,r){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+w,y,x+w,y+h,r);
+      ctx.arcTo(x+w,y+h,x,y+h,r);
+      ctx.arcTo(x,y+h,x,y,r);
+      ctx.arcTo(x,y,x+w,y,r);
+      ctx.closePath();
+    }
+    function fitText(text,x,y,maxWidth,size,minSize,color,weight){
+      text=String(text||'—');
+      ctx.font=(weight||600)+' '+size+'px Arial, sans-serif';
+      while(ctx.measureText(text).width>maxWidth&&size>minSize){
+        size--;
+        ctx.font=(weight||600)+' '+size+'px Arial, sans-serif';
+      }
+      ctx.fillStyle=color;
+      ctx.fillText(text,x,y,maxWidth);
+    }
+    function drawCardBase(x,y,alternate){
+      ctx.save();
+      ctx.shadowColor='rgba(20,65,43,.12)';
+      ctx.shadowBlur=14;
+      ctx.shadowOffsetY=5;
+      roundedRect(x,y,cardWidth,cardHeight,38);
+      var gradient=ctx.createLinearGradient(x,y,x+cardWidth,y+cardHeight);
+      if(alternate){
+        gradient.addColorStop(0,'#f3f8f4');
+        gradient.addColorStop(1,'#e5f0e9');
+      }else{
+        gradient.addColorStop(0,'#e7f4e9');
+        gradient.addColorStop(.55,'#f2f7f1');
+        gradient.addColorStop(1,'#eaf3ec');
+      }
+      ctx.fillStyle=gradient;
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      roundedRect(x+3,y+3,cardWidth-6,cardHeight-6,35);
+      ctx.clip();
+      var glow=ctx.createRadialGradient(x+cardWidth*.9,y+cardHeight*.8,10,x+cardWidth*.9,y+cardHeight*.8,260);
+      glow.addColorStop(0,'rgba(67,160,103,.16)');
+      glow.addColorStop(1,'rgba(67,160,103,0)');
+      ctx.fillStyle=glow;
+      ctx.fillRect(x,y,cardWidth,cardHeight);
+      ctx.beginPath();
+      ctx.arc(x+cardWidth*.92,y+cardHeight*.85,210,0,Math.PI*2);
+      ctx.strokeStyle='rgba(31,122,70,.12)';
+      ctx.lineWidth=4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x+cardWidth*.92,y+cardHeight*.85,155,0,Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle=alternate?'#287653':'#20804b';
+      ctx.fillRect(x,y,12,cardHeight);
+      ctx.restore();
+      ctx.lineWidth=3;
+      ctx.strokeStyle='#b8d5c9';
+      roundedRect(x+2,y+2,cardWidth-4,cardHeight-4,36);
+      ctx.stroke();
+    }
+    function drawLogo(x,y,size){
+      if(logo&&logo.complete&&logo.naturalWidth){
+        ctx.save();
+        roundedRect(x,y,size,size,15);
+        ctx.clip();
+        ctx.fillStyle='#fff';
+        ctx.fillRect(x,y,size,size);
+        ctx.drawImage(logo,x+5,y+5,size-10,size-10);
+        ctx.restore();
+      }else{
+        ctx.fillStyle='#20804b';
+        roundedRect(x,y,size,size,15);
+        ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.font='bold '+Math.round(size*.65)+'px Arial, sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText('e',x+size/2,y+size*.72);
+        ctx.textAlign='left';
+      }
+    }
+    function drawHeader(x,y,school,subtitle,tag){
+      drawLogo(x+48,y+42,80);
+      fitText(school,x+145,y+77,560,34,22,'#0f3d26',700);
+      fitText(subtitle,x+145,y+111,560,22,16,'#557663',600);
+      ctx.fillStyle='rgba(255,255,255,.75)';
+      roundedRect(x+cardWidth-240,y+52,190,52,24);
+      ctx.fill();
+      fitText(tag,x+cardWidth-222,y+86,155,18,14,'#17653a',800);
+      ctx.fillStyle='rgba(31,122,70,.22)';
+      roundedRect(x+48,y+145,cardWidth-96,2,1);
+      ctx.fill();
+    }
+
+    var x=startX,y=startY;
+    drawCardBase(x,y,false);
+    drawHeader(x,y,front.querySelector('.pass-brand span').childNodes[0].textContent.trim(),
+      front.querySelector('.pass-brand small').textContent,'LIBRARY PASS');
+    var avatarX=x+52,avatarY=y+204,avatarSize=188;
+    ctx.beginPath();
+    ctx.arc(avatarX+avatarSize/2,avatarY+avatarSize/2,avatarSize/2+8,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarX+avatarSize/2,avatarY+avatarSize/2,avatarSize/2,0,Math.PI*2);
+    ctx.clip();
+    ctx.fillStyle='#d5e9db';
+    ctx.fillRect(avatarX,avatarY,avatarSize,avatarSize);
+    if(photo&&photo.tagName==='IMG'&&photo.complete&&photo.naturalWidth){
+      ctx.drawImage(photo,avatarX,avatarY,avatarSize,avatarSize);
+    }else{
+      var initials=photo.textContent.trim();
+      ctx.fillStyle='#145b36';
+      ctx.font='bold 92px Arial, sans-serif';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText(initials,avatarX+avatarSize/2,avatarY+avatarSize/2);
+      ctx.textAlign='left';
+      ctx.textBaseline='alphabetic';
+    }
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(avatarX+avatarSize/2,avatarY+avatarSize/2,avatarSize/2+5,0,Math.PI*2);
+    ctx.strokeStyle='rgba(31,122,70,.24)';
+    ctx.lineWidth=4;
+    ctx.stroke();
+    ctx.fillStyle='#557663';
+    ctx.font='bold 20px Arial, sans-serif';
+    ctx.fillText('STUDENT NAME',x+280,y+245);
+    fitText(front.querySelector('.pass-details h2').textContent,x+280,y+310,440,48,30,'#0f3d26',700);
+    ctx.fillStyle='#557663';
+    ctx.font='bold 18px Arial, sans-serif';
+    ctx.fillText('STUDENT ID',x+280,y+374);
+    ctx.fillStyle='rgba(255,255,255,.72)';
+    roundedRect(x+268,y+386,390,56,16);
+    ctx.fill();
+    fitText(front.querySelector('.pass-id').textContent,x+280,y+418,430,34,24,'#0f3d26',700);
+    ctx.fillStyle='#23814d';
+    ctx.font='bold 14px Arial, sans-serif';
+    ctx.fillText('ACTIVE STUDENT',x+280,y+468);
+    ctx.fillStyle='#fff';
+    roundedRect(x+cardWidth-248,y+190,210,210,20);
+    ctx.fill();
+    ctx.strokeStyle='rgba(31,122,70,.18)';
+    ctx.lineWidth=2;
+    roundedRect(x+cardWidth-248,y+190,210,210,20);
+    ctx.stroke();
+    ctx.drawImage(qrImage,x+cardWidth-238,y+200,190,190);
+    ctx.strokeStyle='rgba(31,122,70,.25)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(x+48,y+cardHeight-72);
+    ctx.lineTo(x+cardWidth-48,y+cardHeight-72);
+    ctx.stroke();
+    ctx.fillStyle='#557663';
+    ctx.font='bold 16px Arial, sans-serif';
+    ctx.fillText('STUDENT IDENTIFICATION',x+48,y+cardHeight-42);
+    ctx.textAlign='right';
+    ctx.fillText('SCAN FOR LIBRARY ACCESS',x+cardWidth-48,y+cardHeight-42);
+    ctx.textAlign='left';
+
+    x=startX+cardWidth+gap;
+    drawCardBase(x,y,true);
+    drawHeader(x,y,back.querySelector('.pass-brand span').childNodes[0].textContent.trim(),
+      back.querySelector('.pass-brand small').textContent,'STUDENT PASS');
+    var fields=Array.from(back.querySelectorAll('.pass-back-details>div'));
+    var fieldPositions=[
+      [x+52,y+210],[x+525,y+210],[x+52,y+320],[x+525,y+320]
+    ];
+    fields.forEach(function(field,index){
+      var position=fieldPositions[index];
+      ctx.fillStyle='rgba(255,255,255,.52)';
+      roundedRect(position[0]-12,position[1]-30,444,78,13);
+      ctx.fill();
+      fitText(field.querySelector('small').textContent,position[0],position[1],420,18,14,'#688779',700);
+      fitText(field.querySelector('strong').textContent,position[0],position[1]+35,420,26,17,'#163d32',700);
+    });
+    var signatureX=x+52,signatureY=y+415,signatureWidth=cardWidth-104,signatureHeight=95;
+    ctx.fillStyle='rgba(255,255,255,.48)';
+    roundedRect(signatureX-12,signatureY-30,signatureWidth+24,signatureHeight+38,14);
+    ctx.fill();
+    ctx.fillStyle='#688779';
+    ctx.font='bold 18px Arial, sans-serif';
+    ctx.fillText('STUDENT SIGNATURE',signatureX,signatureY);
+    if(signature)ctx.drawImage(signature,signatureX,signatureY+8,signatureWidth,signatureHeight-8);
+    ctx.strokeStyle='#6f9180';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(signatureX,signatureY+signatureHeight);
+    ctx.lineTo(signatureX+signatureWidth,signatureY+signatureHeight);
+    ctx.stroke();
+    ctx.strokeStyle='rgba(31,122,70,.25)';
+    ctx.beginPath();
+    ctx.moveTo(x+48,y+cardHeight-72);
+    ctx.lineTo(x+cardWidth-48,y+cardHeight-72);
+    ctx.stroke();
+    ctx.fillStyle='#688779';
+    ctx.font='bold 13px Arial, sans-serif';
+    fitText(back.querySelector('.pass-back-footer span:first-child').textContent,x+48,y+cardHeight-42,400,13,10,'#688779',700);
+    ctx.textAlign='right';
+    fitText(back.querySelector('.pass-back-footer span:last-child').textContent,x+cardWidth-48,y+cardHeight-42,430,13,10,'#688779',700);
+    ctx.textAlign='left';
+
+    var pngData=paper.toDataURL('image/png');
+    var encoded=pngData.split(',')[1];
+    if(!encoded)throw new Error('The pass image could not be created.');
+    var binary=atob(encoded);
+    var bytes=new Uint8Array(binary.length);
+    for(var byteIndex=0;byteIndex<binary.length;byteIndex++)bytes[byteIndex]=binary.charCodeAt(byteIndex);
+    var phys=new Uint8Array(21);
+    var view=new DataView(phys.buffer);
+    view.setUint32(0,9);
+    phys.set([112,72,89,115],4);
+    view.setUint32(8,11811);
+    view.setUint32(12,11811);
+    phys[16]=1;
+    var crc=0xffffffff;
+    for(var i=4;i<17;i++){    
+      crc^=phys[i];
+      for(var bit=0;bit<8;bit++)crc=(crc&1)?(crc>>>1)^0xedb88320:crc>>>1;
+    }
+    view.setUint32(17,(crc^0xffffffff)>>>0);
+    var imageBlob=new Blob([bytes.slice(0,33),phys,bytes.slice(33)],{type:'image/png'});
+    var url=URL.createObjectURL(imageBlob);
+    var link=document.createElement('a');
+    var studentName=front.querySelector('.pass-details h2').textContent.trim().replace(/[^a-z0-9_-]+/gi,'_');
+    link.href=url;
+    link.download='library-pass-'+(studentName||'student')+'.png';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},60000);
+    status.textContent='Downloaded: both wallet-size sides on one letter-size image.';
+  }catch(error){
+    console.error('Could not download the student pass image:',error);
+    status.textContent=error.message||'Could not create the pass image. Please try again.';
+  }finally{
+    button.disabled=false;
+  }
+};
+function initPassSignatures(){
+  document.querySelectorAll('.pass-signature-canvas').forEach(function(canvas){
+    canvas.width=1200;
+    canvas.height=128;
+    var context=canvas.getContext('2d');
+    context.strokeStyle='#174f37';
+    context.lineWidth=4;
+    context.lineCap='round';
+    context.lineJoin='round';
+    var drawing=false;
+    function point(event){
+      var bounds=canvas.getBoundingClientRect();
+      return {
+        x:(event.clientX-bounds.left)*canvas.width/bounds.width,
+        y:(event.clientY-bounds.top)*canvas.height/bounds.height
+      };
+    }
+    canvas.addEventListener('pointerdown',function(event){
+      drawing=true;
+      canvas.setPointerCapture(event.pointerId);
+      var p=point(event);
+      context.beginPath();
+      context.moveTo(p.x,p.y);
+      event.preventDefault();
+    });
+    canvas.addEventListener('pointermove',function(event){
+      if(!drawing)return;
+      var p=point(event);
+      context.lineTo(p.x,p.y);
+      context.stroke();
+      event.preventDefault();
+    });
+    canvas.addEventListener('pointerup',function(){drawing=false;});
+    canvas.addEventListener('pointercancel',function(){drawing=false;});
+  });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initPassSignatures);
+else initPassSignatures();
 </script>
 <?php }
