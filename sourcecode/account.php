@@ -1,9 +1,12 @@
-<?php require 'config.php';require 'Ui2026.PHP';auth(['admin','librarian','student']);
+<?php require 'config.php';require 'Ui2026.PHP';auth(['admin','librarian','student','teacher']);
 photo_col($pdo);
 $me=(int)$_SESSION['u']['id'];
 $role=$_SESSION['u']['role']??'';
+if($role==='teacher')ensure_teacher_schema($pdo);
+if($role==='student')ensure_user_email_schema($pdo);
 $isStaff=in_array($role,['admin','librarian'],true);
 $isAdmin=$role==='admin';
+$isTeacher=$role==='teacher';
 $tab=$_GET['tab']??'profile';
 if(!in_array($tab,['profile','settings','resets','bookings'],true)||(!$isAdmin&&$tab!=='profile'))$tab='profile';
 if($isAdmin){settings_init($pdo);ensure_recovery_schema($pdo);ensure_book_request_schema($pdo);ensure_student_account_status_schema($pdo);}
@@ -12,7 +15,18 @@ if($isAdmin){settings_init($pdo);ensure_recovery_schema($pdo);ensure_book_reques
 if($_SERVER['REQUEST_METHOD']==='POST'){
   $ok=true;$msg='';
   $redirectTab='profile';
-  if($isAdmin&&isset($_POST['admin_action'])){
+  if($isTeacher&&isset($_POST['teacher_photo_action'])){
+    if(!csrf_token_valid($_POST['csrf_token']??null)){$ok=false;$msg='Your session expired. Refresh the page and try again.';}
+    elseif(empty($_SESSION['u']['teacher_id'])){$ok=false;$msg='Teacher account not found.';}
+    elseif($_POST['teacher_photo_action']==='upload'){
+      $photoError=teacher_photo_save($pdo,(int)$_SESSION['u']['teacher_id'],$_FILES['teacher_photo']??[]);
+      if($photoError!==''){$ok=false;$msg=$photoError;}
+      else $msg='Profile photo updated.';
+    }elseif($_POST['teacher_photo_action']==='remove'){
+      if(!teacher_photo_remove($pdo,(int)$_SESSION['u']['teacher_id'])){$ok=false;$msg='Teacher account not found.';}
+      else $msg='Profile photo removed.';
+    }else{$ok=false;$msg='Invalid profile photo action.';}
+  }elseif($isAdmin&&isset($_POST['admin_action'])){
     $action=(string)$_POST['admin_action'];
     $redirectTab=in_array($action,['rules','info','logo_up','logo_rm','addstaff','resetpw','delstaff'],true)?'settings':($action==='generate_code'?'resets':'bookings');
     if(!csrf_token_valid($_POST['csrf_token']??null)){
@@ -126,6 +140,23 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     if(!preg_match('/^[A-Za-z0-9_.-]{3,30}$/',$un)){$ok=false;$msg='Username must be 3-30 characters: letters, numbers, dot, dash or underscore.';}
     elseif($c->fetchColumn()){$ok=false;$msg='That username is already taken.';}
     else{$pdo->prepare("UPDATE users SET username=? WHERE id=?")->execute([$un,$me]);$_SESSION['u']['username']=$un;$msg='Username updated.';}
+  }elseif(isset($_POST['save_student_email'])&&$role==='student'){
+    $email=trim((string)($_POST['email']??''));
+    if(!csrf_token_valid($_POST['csrf_token']??null)){$ok=false;$msg='Your session expired. Refresh the page and try again.';}
+    elseif($email!==''&&(!filter_var($email,FILTER_VALIDATE_EMAIL)||strlen($email)>254)){$ok=false;$msg='Enter a valid Gmail or email address.';}
+    else{
+      $duplicateEmail=$pdo->prepare("SELECT COUNT(*) FROM users WHERE email=? AND id<>?");
+      $duplicateEmail->execute([$email,$me]);
+      if($email!==''&&(int)$duplicateEmail->fetchColumn()>0){$ok=false;$msg='That email address is already associated with another account.';}
+      else try{
+        $emailQuery=$pdo->prepare("UPDATE users SET email=? WHERE id=? AND role='student'");
+        $emailQuery->execute([$email!==''?$email:null,$me]);
+        $msg='Email saved. It will appear on the back of your student ID.';
+      }catch(PDOException $e){
+        if(($e->errorInfo[1]??null)===1062){$ok=false;$msg='That email address is already associated with another account.';}
+        else{throw $e;}
+      }
+    }
   }
   if($msg){$_SESSION['flash']=[$ok,$msg];header('Location: account.php?tab=profile');exit;}
 }
@@ -158,13 +189,20 @@ if($isAdmin){
 /* ---------- data ---------- */
 $u=$pdo->prepare("SELECT * FROM users WHERE id=?");$u->execute([$me]);$u=$u->fetch();
 $st=null;
+$teacher=null;
 if($role==='student'&&!empty($u['student_id'])){$s=$pdo->prepare("SELECT * FROM students WHERE id=?");$s->execute([$u['student_id']]);$st=$s->fetch();}
-$display=$st['name']??($u['username']??'User');
-$av=$st?avatar($st,'xl'):avatar(['name'=>$display],'xl');
+$hasTeacherAccount=$role==='teacher'&&!empty($u['teacher_id']);
+if($hasTeacherAccount){ensure_teacher_schema($pdo);$t=$pdo->prepare("SELECT * FROM teachers WHERE id=?");$t->execute([$u['teacher_id']]);$teacher=$t->fetch();}
+$display=$st['name']??($teacher['name']??($u['username']??'User'));
+$teacherPhoto=$teacher['photo']??'';
+$av=$st?avatar($st,'xl'):($teacher&&teacher_photo_path_ok($teacherPhoto)&&is_file(__DIR__.'/'.$teacherPhoto)
+  ?'<img class="pav xl" src="'.h($teacherPhoto).'" alt="'.h($display).'" loading="lazy">'
+  :avatar(['name'=>$display],'xl'));
 $perm=[
   'admin'=>'Full access: manage students, books, staff accounts and settings.',
   'librarian'=>'Borrow, return and attendance. Can view students; only admins can edit them.',
-  'student'=>'View your profile, borrowed books, attendance and QR code.'
+  'student'=>'View your profile, borrowed books, attendance and QR code.',
+  'teacher'=>'View your teacher pass and borrowing history.'
 ][$role]??'';
 head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='resets'?'Password resets':($tab==='bookings'?'Book requests':'Settings'))));ui_css();?>
 <style>
@@ -173,7 +211,7 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 .pg .acc h2{margin:0;font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-.03em}
 .pg .acc .chips{justify-content:flex-start;margin:10px 0 12px}
 .pg .acc p{margin:0;color:var(--mute);font-size:14px;max-width:520px}
-.pg .pill.admin{background:#dbeafe;color:#1d4ed8}.pg .pill.librarian{background:#d1fae5;color:#065f46}.pg .pill.student{background:#ede9fe;color:#6d28d9}
+.pg .pill.admin{background:#dbeafe;color:#1d4ed8}.pg .pill.librarian{background:#d1fae5;color:#065f46}.pg .pill.student{background:#ede9fe;color:#6d28d9}.pg .pill.teacher{background:#fef3c7;color:#92400e}
 .pg .split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
 @media(max-width:900px){.pg .split{grid-template-columns:1fr}}
 .pg label.fl{display:block}
@@ -192,7 +230,7 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 .pg .str.s1 i:nth-child(-n+1){background:#ef4444}.pg .str.s2 i:nth-child(-n+2){background:#f59e0b}.pg .str.s3 i:nth-child(-n+3){background:#84cc16}.pg .str.s4 i{background:#16a34a}
 .pg .strt{font-size:12px;color:var(--mute);margin:6px 0 0;min-height:16px}
 .pg .account-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
-.pg .account-tabs a{padding:10px 14px;border:1px solid var(--line);border-radius:12px;color:var(--mute);font-size:13px;font-weight:800;text-decoration:none}
+.pg .account-tabs a{display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;color:var(--mute);font-size:13px;font-weight:800;text-decoration:none}
 .pg .account-tabs a.on{background:var(--leaf);border-color:#b9d3c0;color:var(--gd)}
 .pg .account-tabs .nav-alert-dot{margin-left:7px;vertical-align:middle}
 .pg .settings-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
@@ -210,6 +248,11 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 .pg .reply-form textarea{min-height:64px;resize:vertical;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit}
 .pg .request-actions{display:flex;gap:6px;flex-wrap:wrap}
 .pg .request-actions button{height:38px;padding:0 12px;font-size:12px}
+.pg .teacher-profile-photo{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}
+.pg .teacher-profile-photo label.fl{flex:1;min-width:220px}
+.pg .teacher-profile-photo input[type=file]{width:100%;padding:9px}
+.pg .teacher-profile-remove{display:inline-block;margin-top:4px}
+.pg .teacher-profile-remove button{height:42px}
 @media(max-width:900px){.pg .settings-split{grid-template-columns:1fr}}
 @media(max-width:640px){.pg .logo-form{grid-template-columns:1fr}.pg .settings-actions,.pg .settings-actions form{width:100%}.pg .settings-actions input{flex:1;min-width:0}}
 </style>
@@ -218,8 +261,8 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 <?php if($flash)echo '<div class="note'.($flash[0]?'':' bad').'">'.ic('info').'<span>'.h($flash[1]).'</span></div>';?>
 <?php if($isAdmin):?>
 <nav class="account-tabs" aria-label="Account sections">
-  <?php foreach(['profile'=>'My account','settings'=>'Settings','resets'=>'Password resets','bookings'=>'Book requests'] as $key=>$label):?>
-  <a class="<?=$tab===$key?'on':''?>" href="account.php?tab=<?=$key?>"><?=h($label)?><?=($key==='resets'&&count($resetRequests)>0)||($key==='bookings'&&(int)($bookingCounts['pending']??0)>0)?'<i class="nav-alert-dot" aria-label="Pending requests"></i>':''?></a>
+  <?php foreach(['profile'=>'My account','settings'=>'Settings','resets'=>'Password resets','bookings'=>'Book requests'] as $key=>$label):$tabIcon=['profile'=>'user-circle','settings'=>'settings','resets'=>'clipboard-list','bookings'=>'send'][$key];?>
+  <a class="<?=$tab===$key?'on':''?>" href="account.php?tab=<?=$key?>"><?=ic($tabIcon)?><?=h($label)?><?=($key==='resets'&&count($resetRequests)>0)||($key==='bookings'&&(int)($bookingCounts['pending']??0)>0)?'<i class="nav-alert-dot" aria-label="Pending requests"></i>':''?></a>
   <?php endforeach;?>
 </nav>
 <?php endif;?>
@@ -238,7 +281,22 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
       <?php if($st&&$st['section']!==''):?><span class="chip"><?=h($st['section'])?></span><?php endif;?>
     </div>
     <p><?=h($perm)?></p>
-    <?php if($st):?><div class="fact"><a class="btn" href="student.php" style="display:inline-flex;gap:8px;align-items:center;height:42px;border-radius:13px"><?=ic('user')?>Open my dashboard &amp; change photo</a></div><?php endif;?>
+    <?php if($st):?><div class="fact"><a class="btn" href="student.php" style="display:inline-flex;gap:8px;align-items:center;height:42px;border-radius:13px"><?=ic('user-circle')?>Open my dashboard &amp; change photo</a></div><?php elseif($teacher):?>
+      <div class="fact"><a class="btn" href="teacher.php" style="display:inline-flex;gap:8px;align-items:center;height:42px;border-radius:13px"><?=ic('id-card')?>Open my teacher pass</a></div>
+      <form method="post" enctype="multipart/form-data" class="teacher-profile-photo">
+        <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
+        <input type="hidden" name="teacher_photo_action" value="upload">
+        <label class="fl"><span>Profile photo (JPG, PNG, or WEBP; max 8 MB)</span><input type="file" name="teacher_photo" accept="image/jpeg,image/png,image/webp" required></label>
+        <button type="submit"><?=ic('upload')?>Save profile photo</button>
+      </form>
+      <?php if($teacherPhoto!==''):?>
+        <form method="post" onsubmit="return confirm('Remove your profile photo?')" class="teacher-profile-remove">
+          <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
+          <input type="hidden" name="teacher_photo_action" value="remove">
+          <button type="submit" class="ghost"><?=ic('trash')?>Remove photo</button>
+        </form>
+      <?php endif;?>
+    <?php endif;?>
   </div>
 </div>
 
@@ -246,20 +304,28 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
   <!-- Account details -->
   <?php if($isStaff):?>
   <form method="post" class="card">
-    <div class="ph"><span class="pico"><?=ic('user')?></span><div><h3>Username</h3><p>This is what you type when signing in.</p></div></div>
+    <div class="ph"><span class="pico"><?=ic('user-circle')?></span><div><h3>Username</h3><p>This is what you type when signing in.</p></div></div>
     <label class="fl"><span>Username</span><input name="username" value="<?=h($u['username']??'')?>" maxlength="30" autocomplete="username" required></label>
     <div class="fact"><button name="uname" value="1"><?=ic('plus')?>Save username</button></div>
     <p class="help">3-30 characters: letters, numbers, dot, dash or underscore.</p>
   </form>
   <?php else:?>
   <div class="card">
-    <div class="ph"><span class="pico"><?=ic('file')?></span><div><h3>Account details</h3><p>Your sign-in information.</p></div></div>
+    <div class="ph"><span class="pico"><?=ic('user-circle')?></span><div><h3>Account details</h3><p>Your sign-in information.</p></div></div>
     <dl class="kv">
       <div><dt>Username</dt><dd><?=h($u['username']??'')?></dd></div>
-      <?php if($st):?><div><dt>Student ID</dt><dd><?=h($st['student_no'])?></dd></div><?php endif;?>
+      <?php if($st):?><div><dt>Student ID</dt><dd><?=h($st['student_no'])?></dd></div><?php elseif($teacher):?><div><dt>Teacher ID</dt><dd><?=h($teacher['teacher_no'])?></dd></div><?php endif;?>
+      <?php if($role==='student'):?><div><dt>Email</dt><dd><?=h($u['email']??'')?:'Not added yet'?></dd></div><?php endif;?>
       <div><dt>Role</dt><dd><?=h(ucfirst($role))?></dd></div>
     </dl>
-    <p class="help">Your username is your Student ID. Ask the admin if something is wrong.</p>
+    <p class="help">Your username is your <?= $teacher?'Teacher':'Student' ?> ID. Ask the library staff if something is wrong.</p>
+    <?php if($role==='student'):?>
+      <form method="post" style="margin-top:16px">
+        <input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
+        <label class="fl"><span>Gmail / Email (shown on the back of your ID)</span><input type="email" name="email" maxlength="254" value="<?=h($u['email']??'')?>" placeholder="yourname@gmail.com" autocomplete="email"></label>
+        <div class="fact"><button type="submit" name="save_student_email" value="1"><?=ic('plus')?>Save email</button></div>
+      </form>
+    <?php endif;?>
   </div>
   <?php endif;?>
 
@@ -279,7 +345,7 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 <div class="settings-split">
   <form method="post" class="card">
     <input type="hidden" name="admin_action" value="rules"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>">
-    <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Loan rules</h3><p>How many books and for how long.</p></div></div>
+    <div class="ph"><span class="pico"><?=ic('books')?></span><div><h3>Loan rules</h3><p>How many books and for how long.</p></div></div>
     <div class="fgrid">
       <label class="fl"><span>Max books per student</span><input type="number" name="max_loans" min="1" max="20" value="<?=$adminSettings['max_loans']?>" required></label>
       <label class="fl"><span>Loan period (days)</span><input type="number" name="loan_days" min="1" max="60" value="<?=$adminSettings['loan_days']?>" required></label>
@@ -326,14 +392,14 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 <?php elseif($isAdmin&&$tab==='resets'):?>
 <?php if($issuedCode):?><div class="card" role="status" style="border:2px solid var(--g)"><div class="ph"><span class="pico"><?=ic('info')?></span><div><h3>Give this code to <?=h($issuedCode['username'])?></h3><p>This one-time code expires at <?=h($issuedCode['expires_at'])?>. Do not share it with anyone else.</p></div></div><p style="font-size:30px;font-weight:800;letter-spacing:.18em;text-align:center;margin:20px 0"><?=h($issuedCode['code'])?></p></div><?php endif;?>
 <div class="card">
-  <div class="ph"><span class="pico"><?=ic('user')?></span><div><h3>Pending password reset requests</h3><p>Confirm the user's identity before generating a one-time code.</p></div><span class="badge"><?=count($resetRequests)?> pending</span></div>
+  <div class="ph"><span class="pico"><?=ic('clipboard-list')?></span><div><h3>Pending password reset requests</h3><p>Confirm the user's identity before generating a one-time code.</p></div><span class="badge"><?=count($resetRequests)?> pending</span></div>
   <?php if(!$resetRequests):?><p class="help">No recent reset requests.</p><?php else:?><div class="tw"><table class="rt"><tr><th>Username</th><th>Role</th><th>Requested</th><th>Action</th></tr>
   <?php foreach($resetRequests as $request):?><tr><td data-label="Username"><?=h($request['username'])?></td><td data-label="Role"><?=h(ucfirst($request['role']))?></td><td data-label="Requested"><?=h($request['requested_at'])?></td><td data-label="Action"><form method="post"><input type="hidden" name="admin_action" value="generate_code"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><button name="generate_code" value="<?=(int)$request['user_id']?>">Generate code</button></form></td></tr><?php endforeach;?>
   </table></div><?php endif;?>
 </div>
 <?php elseif($isAdmin&&$tab==='bookings'):?>
 <div class="card">
-  <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Student booking requests</h3><p>Review messages, reply, and approve or decline bookings.</p></div><span class="badge"><?=count($bookingRequests)?> shown</span></div>
+  <div class="ph"><span class="pico"><?=ic('send')?></span><div><h3>Student booking requests</h3><p>Review messages, reply, and approve or decline bookings.</p></div><span class="badge"><?=count($bookingRequests)?> shown</span></div>
   <nav class="request-filter" aria-label="Filter booking requests"><?php foreach($validBookingFilters as $status):?><a class="<?=$bookingFilter===$status?'on':''?>" href="account.php?tab=bookings&amp;booking_status=<?=h($status)?>"><?=h(ucfirst($status))?><?=$status!=='all'?' ('.(int)($bookingCounts[$status]??0).')':''?></a><?php endforeach;?></nav>
   <?php if(!$bookingRequests):?><p class="help">No booking requests in this view.</p><?php else:?><div class="tw" style="margin-top:14px"><table class="rt">
   <tr><th>Student</th><th>Book</th><th>Message</th><th>Status</th><th>Requested</th><th>Reply / action</th></tr>
