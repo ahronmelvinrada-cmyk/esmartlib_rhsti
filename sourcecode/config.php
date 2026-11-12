@@ -152,6 +152,35 @@
         }
         $done=true;
       }
+
+      function ensure_teacher_schema($pdo){
+        static $done=false;
+        if($done)return;
+        $pdo->exec("CREATE TABLE IF NOT EXISTS teachers (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          teacher_no VARCHAR(30) NOT NULL UNIQUE,
+          name VARCHAR(120) NOT NULL,
+          photo VARCHAR(255) DEFAULT NULL,
+          account_active TINYINT(1) NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $teacherColumns=$pdo->query("SHOW COLUMNS FROM teachers LIKE 'photo'");
+        if(!$teacherColumns||!$teacherColumns->fetch())$pdo->exec("ALTER TABLE teachers ADD COLUMN photo VARCHAR(255) DEFAULT NULL");
+        $userColumns=$pdo->query("SHOW COLUMNS FROM users");
+        $userMap=[];
+        foreach($userColumns as $column)$userMap[$column['Field']]=$column;
+        if(!isset($userMap['teacher_id']))$pdo->exec("ALTER TABLE users ADD COLUMN teacher_id INT DEFAULT NULL");
+        if(strpos((string)($userMap['role']['Type']??''),"'teacher'")===false){
+          $pdo->exec("ALTER TABLE users MODIFY role ENUM('admin','librarian','student','teacher') DEFAULT 'librarian'");
+        }
+        $borrowColumns=$pdo->query("SHOW COLUMNS FROM borrowings");
+        $borrowMap=[];
+        foreach($borrowColumns as $column)$borrowMap[$column['Field']]=$column;
+        if(!isset($borrowMap['teacher_id']))$pdo->exec("ALTER TABLE borrowings ADD COLUMN teacher_id INT DEFAULT NULL AFTER student_id");
+        if(($borrowMap['student_id']['Null']??'')!=='YES')$pdo->exec("ALTER TABLE borrowings MODIFY student_id INT DEFAULT NULL");
+        if(($borrowMap['due_date']['Null']??'')!=='YES')$pdo->exec("ALTER TABLE borrowings MODIFY due_date DATE DEFAULT NULL");
+        $done=true;
+      }
       
       function auth($roles=['admin','librarian']){
         if(empty($_SESSION['u'])){header('Location: login.php');exit;}
@@ -163,9 +192,18 @@
             session_unset();session_destroy();
             header('Location: login.php?deactivated=1');exit;
           }
+        }elseif(($_SESSION['u']['role']??'')==='teacher'){
+          ensure_teacher_schema($GLOBALS['pdo']);
+          $status=$GLOBALS['pdo']->prepare("SELECT account_active FROM teachers WHERE id=?");
+          $status->execute([(int)($_SESSION['u']['teacher_id']??0)]);
+          if((int)$status->fetchColumn()!==1){
+            session_unset();session_destroy();
+            header('Location: login.php?deactivated=1');exit;
+          }
         }
         if(!in_array($_SESSION['u']['role'],$roles)){
           if($_SESSION['u']['role']=='student'){header('Location: student.php');exit;}
+          if($_SESSION['u']['role']=='teacher'){header('Location: teacher.php');exit;}
           http_response_code(403);exit('Forbidden');
         }
       }
@@ -187,21 +225,35 @@
         $logoFile=$logoAllowed&&is_file(__DIR__.'/'.$logoPath)?$logoPath:'';
         $brandMark=$logoFile?'<img src="'.h($logoFile).'?v='.filemtime(__DIR__.'/'.$logoFile).'" alt="" style="width:42px;height:42px;object-fit:contain;flex:none;border-radius:12px;background:#fff;padding:3px">':'<i>e</i>';
         $I=['grid'=>'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+        'dashboard'=>'<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
         'users'=>'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
         'book'=>'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+        'id-card'=>'<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 17a3 3 0 0 1 6 0m3-6h3m-3 4h3M9 5V3h6v2"/>',
+        'books'=>'<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10v17H5.5A1.5 1.5 0 0 1 4 18.5zM10 5h4.5A1.5 1.5 0 0 1 16 6.5v13a1.5 1.5 0 0 1-1.5 1.5H10m6-14h2.5A1.5 1.5 0 0 1 20 8.5v10a1.5 1.5 0 0 1-1.5 1.5H16"/>',
         'out'=>'<path d="M7 17 17 7M7 7h10v10"/>','in'=>'<path d="M17 7 7 17M17 17H7V7"/>','clock'=>'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        'history'=>'<path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/>',
+        'send'=>'<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+        'clipboard-list'=>'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M9 10h6m-6 4h6m-6 4h3"/>',
         'settings'=>'<path d="M9.6 2h4.8l.7 3.1a7.4 7.4 0 0 1 1.8 1l2.9-1.2 2.4 4.2-2.3 2.1v2l2.3 2.1-2.4 4.2-2.9-1.2a7.4 7.4 0 0 1-1.8 1l-.7 3.1H9.6l-.7-3.1a7.4 7.4 0 0 1-1.8-1l-2.9 1.2-2.4-4.2 2.3-2.1v-2L1.8 9.1l2.4-4.2 2.9 1.2a7.4 7.4 0 0 1 1.8-1L9.6 2Z"/><circle cx="12" cy="12" r="3.2"/>',
+        'user-circle'=>'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/>',
         'user'=>'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'];
         
-        $nav=['index.php'=>['Dashboard','grid'],'students.php'=>['Students','users'],'books.php'=>['Books','book'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Time-In / Out','clock'],'history.php'=>['History','clock'],'account.php'=>['My Account','user']];
-        if($role==='admin')$nav['account.php']=['Account & Requests','settings'];
+        $nav=['index.php'=>['Dashboard','dashboard'],'students.php'=>['Students','users']];
+        if($role==='admin'||$role==='librarian')$nav['teachers.php']=['Teachers','users'];
+        $nav+=['books.php'=>['Books','books'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Time-In / Out','clock'],'history.php'=>['History','history'],'account.php'=>['My Account','user-circle']];
+        if($role==='admin')$nav['account.php']=['Account & Requests','send'];
         if($role=='student'){
           $nav=$p==='student.php'
-            ? ['#dashboard'=>['My Dashboard','grid'],'#pass'=>['My Pass','book'],'#booking'=>['Booking','book'],'#borrowed'=>['My Borrowed','book'],'#history'=>['My History','clock'],'#attendance'=>['Attendance','clock'],'account.php'=>['My Profile','user']]
-            : ['student.php'=>['My Dashboard','grid'],'account.php'=>['My Profile','user']];
+            ? ['#dashboard'=>['My Dashboard','dashboard'],'#pass'=>['My Pass','id-card'],'#booking'=>['Booking','send'],'#borrowed'=>['My Borrowed','books'],'#history'=>['My History','history'],'#attendance'=>['Attendance','clock'],'account.php'=>['My Profile','user-circle']]
+            : ['student.php'=>['My Dashboard','dashboard'],'account.php'=>['My Profile','user-circle']];
+        }
+        if($role==='teacher'){
+          $nav=$p==='teacher.php'
+            ? ['#dashboard'=>['My Dashboard','dashboard'],'#pass'=>['Teacher Pass','id-card'],'#borrowed'=>['My Borrowed','books'],'account.php'=>['My Account','user-circle']]
+            : ['teacher.php'=>['My Dashboard','dashboard'],'account.php'=>['My Account','user-circle']];
         }
 
-        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.h($title).' - '.h($libraryName).' | '.h($schoolName).'</title>'.pwa_head_assets().'<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="assets/style.css?v='.filemtime(__DIR__.'/assets/style.css').'"></head><body><div class="app'.($role==='student'?' student-app'.($p==='student.php'?' student-dashboard':''):($role==='admin'||$role==='librarian'?' staff-app':'')).'"><aside><div class="brand">'.$brandMark.'<span>'.h($libraryName).'<small>'.h($schoolName).'</small></span></div>'.($role==='student'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='admin'||$role==='librarian'?'<a class="staff-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':'' )).'<nav>';
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' - '.h($libraryName).' | '.h($schoolName).'</title>'.pwa_head_assets().'<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="assets/style.css?v='.filemtime(__DIR__.'/assets/style.css').'"></head><body><div class="app'.($role==='student'?' student-app'.($p==='student.php'?' student-dashboard':''):($role==='teacher'?' teacher-app':($role==='admin'||$role==='librarian'?' staff-app':''))).'"><aside><div class="brand">'.$brandMark.'<span>'.h($libraryName).'<small>'.h($schoolName).'</small></span></div>'.($role==='student'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='teacher'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='admin'||$role==='librarian'?'<a class="staff-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':'' ))).'<nav>';
         foreach($nav as $f=>[$l,$i]){
           $active=($p==='account.php'&&strpos($f,'account.php')===0)||($p===basename(parse_url($f,PHP_URL_PATH)?:$f)&&(!$f||$f[0]!=='#'))||($p==='student.php'&&$f==='#dashboard');
           echo '<a href="'.$f.'"'.($active?' class="on"':'').'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$I[$i].'</svg>'.$l.($role==='admin'&&$l==='Account & Requests'&&$notificationCount>0?'<i class="nav-alert-dot" aria-label="'.$notificationCount.' pending requests"></i>':'').'</a>';
