@@ -1,4 +1,4 @@
-  <?php require 'config.php';require 'Ui2026.PHP';auth();
+   <?php require 'config.php';require 'Ui2026.PHP';auth();
   ensure_student_account_status_schema($pdo);
   if(isset($_GET['template'])){header('Content-Type: text/csv');header('Content-Disposition: attachment; filename=students_template.csv');echo "student_no,name,gender,track,STRAND/ COURSE,grade,section\n2024-0001,Juan Dela Cruz,Male,Academic,STEM,11,A\n";exit;}
   if(isset($_POST['import'])){
@@ -16,7 +16,7 @@
         $r=array_map(fn($x)=>mb_check_encoding((string)$x,'UTF-8')?(string)$x:mb_convert_encoding((string)$x,'UTF-8','Windows-1252'),$r);
         if($i++==0){
           $r[0]=preg_replace('/^\xEF\xBB\xBF/','',$r[0]);
-          $keys=array_map(fn($x)=>$alias[trim(preg_replace('/[^a-z]+/','_',strtolower($x)),'_')]??null,$r);
+          $keys=array_map(fn($x)=>$alias[trim(preg_replace('/[^a-z]+/','',strtolower($x)),'')]??null,$r);
           if(in_array('student_no',$keys,true)&&in_array('name',$keys,true)){$map=[];foreach($keys as $c=>$k)if($k)$map[$k]=$c;continue;}
         }
         if(!array_filter($r,fn($x)=>trim($x)!==''))continue;
