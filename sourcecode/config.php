@@ -1,4 +1,4 @@
-<?php
+<?php 
       $is_local = in_array(strtolower($_SERVER['HTTP_HOST'] ?? ''), ['localhost', '127.0.0.1'], true);
       define('DEBUG', $is_local);
       ini_set('display_errors',DEBUG?'1':'0');
