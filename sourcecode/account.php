@@ -57,13 +57,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $name='logo_'.bin2hex(random_bytes(8)).'.'.$extensions[$image[2]];$destination=$dir.'/'.$name;$protection=$dir.'/.htaccess';
             if(!is_file($protection)&&file_put_contents($protection,"<FilesMatch \"\\.(php|phtml|phar)$\">\nRequire all denied\n</FilesMatch>\n")===false){$ok=false;$msg='Could not secure the logo upload folder. Check hosting folder permissions.';}
             elseif(!is_uploaded_file($file['tmp_name']??'')||!move_uploaded_file($file['tmp_name'],$destination)){$ok=false;$msg='Could not save the logo. Please try again.';}
-            else{$oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','uploads/library/'.$name);if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);$msg='Library logo updated.';}
+            else{$oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','uploads/library/'.$name);if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(_DIR_.'/'.$oldLogo))@unlink(_DIR_.'/'.$oldLogo);$msg='Library logo updated.';}
           }
         }
       }
     }elseif($action==='logo_rm'){
       $oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','');
-      if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);
+      if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(_DIR_.'/'.$oldLogo))@unlink(_DIR_.'/'.$oldLogo);
       $msg='Library logo removed.';
     }elseif($action==='addstaff'){
       $un=trim($_POST['username']??'');$pw=$_POST['password']??'';$staffRole=($_POST['role']??'')==='admin'?'admin':'librarian';
@@ -174,7 +174,7 @@ if($isAdmin){
     'school_name'=>setting($pdo,'school_name','RHSTI Library'),
     'logo_path'=>setting($pdo,'library_logo','assets/rhsti-school-logo.jpg')
   ];
-  $adminSettings['logo_file']=($adminSettings['logo_path']==='assets/rhsti-school-logo.jpg'||(strpos($adminSettings['logo_path'],'uploads/library/')===0&&strpos($adminSettings['logo_path'],'..')===false))&&is_file(__DIR__.'/'.$adminSettings['logo_path'])?$adminSettings['logo_path']:'';
+  $adminSettings['logo_file']=($adminSettings['logo_path']==='assets/rhsti-school-logo.jpg'||(strpos($adminSettings['logo_path'],'uploads/library/')===0&&strpos($adminSettings['logo_path'],'..')===false))&&is_file(_DIR_.'/'.$adminSettings['logo_path'])?$adminSettings['logo_path']:'';
   $adminSettings['staff']=$pdo->query("SELECT id,username,role FROM users WHERE role IN ('admin','librarian') ORDER BY role,username")->fetchAll();
   $adminSettings['student_accounts']=(int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='student'")->fetchColumn();
   $resetRequests=$pdo->query("SELECT r.user_id,r.requested_at,u.username,u.role FROM password_reset_codes r JOIN users u ON u.id=r.user_id WHERE r.code_hash IS NULL AND r.requested_at>=DATE_SUB(NOW(),INTERVAL 1 DAY) ORDER BY r.requested_at ASC LIMIT 100")->fetchAll();
@@ -195,7 +195,7 @@ $hasTeacherAccount=$role==='teacher'&&!empty($u['teacher_id']);
 if($hasTeacherAccount){ensure_teacher_schema($pdo);$t=$pdo->prepare("SELECT * FROM teachers WHERE id=?");$t->execute([$u['teacher_id']]);$teacher=$t->fetch();}
 $display=$st['name']??($teacher['name']??($u['username']??'User'));
 $teacherPhoto=$teacher['photo']??'';
-$av=$st?avatar($st,'xl'):($teacher&&teacher_photo_path_ok($teacherPhoto)&&is_file(__DIR__.'/'.$teacherPhoto)
+$av=$st?avatar($st,'xl'):($teacher&&teacher_photo_path_ok($teacherPhoto)&&is_file(_DIR_.'/'.$teacherPhoto)
   ?'<img class="pav xl" src="'.h($teacherPhoto).'" alt="'.h($display).'" loading="lazy">'
   :avatar(['name'=>$display],'xl'));
 $perm=[
@@ -362,7 +362,7 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 </div>
 <div class="card">
   <div class="ph"><span class="pico"><?=ic('upload')?></span><div><h3>Library logo</h3><p>JPG, PNG, or WEBP; maximum 2 MB.</p></div></div>
-  <?php if($adminSettings['logo_file']):?><div class="logo-preview"><img src="<?=h($adminSettings['logo_file'])?>?v=<?=filemtime(__DIR__.'/'.$adminSettings['logo_file'])?>" alt="Current library logo"><span>Current library logo</span></div><?php endif;?>
+  <?php if($adminSettings['logo_file']):?><div class="logo-preview"><img src="<?=h($adminSettings['logo_file'])?>?v=<?=filemtime(_DIR_.'/'.$adminSettings['logo_file'])?>" alt="Current library logo"><span>Current library logo</span></div><?php endif;?>
   <form method="post" enctype="multipart/form-data" class="logo-form">
     <input type="hidden" name="admin_action" value="logo_up"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="MAX_FILE_SIZE" value="2097152">
     <label class="fl"><span>Choose logo image</span><input type="file" name="logo" accept="image/jpeg,image/png,image/webp" required></label><div class="fact"><button>Upload logo</button></div>
