@@ -25,14 +25,114 @@ document.addEventListener('click',event=>{
   if(event.target.closest('.tg'))toggleTheme();
 });
 
+let scanFeedbackOnClose=null;
+let scanFeedbackAudioUnlocked=false;
+const scanFeedbackAudio=new Audio('assets/applepay.mp3');
+scanFeedbackAudio.preload='auto';
+
+window.prepareScanFeedbackAudio=async function(){
+  if(scanFeedbackAudioUnlocked)return;
+  try{
+    scanFeedbackAudio.muted=true;
+    await scanFeedbackAudio.play();
+    scanFeedbackAudio.pause();
+    scanFeedbackAudio.currentTime=0;
+    scanFeedbackAudio.muted=false;
+    scanFeedbackAudioUnlocked=true;
+  }catch(error){
+    scanFeedbackAudio.muted=false;
+    const status=document.getElementById('scan-feedback-status');
+    if(status)status.textContent='Could not enable scan sounds. Check that sound is enabled and assets/applepay.mp3 is available.';
+    console.error('Scan feedback audio could not be enabled:',error);
+  }
+};
+
+async function playScanFeedbackAudio(){
+  try{
+    scanFeedbackAudio.currentTime=0;
+    await scanFeedbackAudio.play();
+  }catch(error){
+    const status=document.getElementById('scan-feedback-status');
+    if(status)status.textContent='Could not play the scan sound. Check that sound is enabled and assets/applepay.mp3 is available.';
+    console.error('Scan feedback audio playback failed:',error);
+  }
+}
+
+function closeScanFeedback(){
+  const popup=document.getElementById('scan-feedback');
+  if(!popup||popup.hidden)return;
+  popup.hidden=true;
+  window.scanFeedbackOpen=false;
+  const onClose=scanFeedbackOnClose;
+  scanFeedbackOnClose=null;
+  if(onClose)onClose();
+}
+
+window.showScanFeedback=function(title,message,profile,bookTitle,onClose){
+  const popup=document.getElementById('scan-feedback');
+  if(!popup)return;
+  if(window.scanFeedbackOpen)return;
+  window.scanFeedbackOpen=true;
+  scanFeedbackOnClose=onClose||null;
+  document.getElementById('scan-feedback-title').textContent=title;
+  document.getElementById('scan-feedback-message').textContent=message;
+  const profileBox=document.getElementById('scan-feedback-profile');
+  const photoBox=document.getElementById('scan-feedback-photo');
+  if(profileBox&&profile){
+    profileBox.hidden=false;
+    photoBox.replaceChildren();
+    const photoPath=profile.photo||'';
+    if(photoPath&&(/^(uploads\/students|uploads\/teachers)\//).test(photoPath)&&!photoPath.includes('..')){
+      const photo=document.createElement('img');
+      photo.src=photoPath;
+      photo.alt=profile.name||'Borrower profile';
+      photoBox.appendChild(photo);
+    }else{
+      const initials=document.createElement('span');
+      initials.textContent=(profile.name||'?').trim().charAt(0).toUpperCase()||'?';
+      photoBox.appendChild(initials);
+    }
+    document.getElementById('scan-feedback-name').textContent=profile.name||'';
+    document.getElementById('scan-feedback-id').textContent=(profile.type||'Borrower')+' ID: '+(profile.id||'');
+    const meta=[profile.grade,profile.strand,profile.section].filter(Boolean);
+    document.getElementById('scan-feedback-meta').textContent=meta.join(' · ');
+  }else if(profileBox){
+    profileBox.hidden=true;
+  }
+  document.getElementById('scan-feedback-details').textContent=bookTitle||'';
+  const status=document.getElementById('scan-feedback-status');
+  if(status)status.textContent='';
+  popup.hidden=false;
+  document.getElementById('scan-feedback-close').focus();
+  playScanFeedbackAudio();
+};
+
+function initScanFeedback(){
+  const popup=document.getElementById('scan-feedback');
+  const close=document.getElementById('scan-feedback-close');
+  if(close)close.addEventListener('click',closeScanFeedback);
+  if(popup)popup.addEventListener('click',event=>{
+    if(event.target===popup)closeScanFeedback();
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape')closeScanFeedback();
+  });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initScanFeedback,{once:true});
+else initScanFeedback();
+
 function drawQR(e){
   if(e.dataset.qrRendered==='true')return;
   e.dataset.qrRendered='true';
   new QRCode(e,{text:e.dataset.code,width:110,height:110});
 }
 
-function renderQR(){
+function renderQR(force){
   const pending=Array.from(document.querySelectorAll('.qr')).filter(e=>e.dataset.qrRendered!=='true');
+  if(force){
+    pending.forEach(drawQR);
+    return;
+  }
   if(!('IntersectionObserver' in window)){
     let index=0;
     const drawBatch=()=>{
