@@ -1,8 +1,9 @@
 <?php require 'config.php';require 'Ui2026.PHP';auth(['admin','librarian']);
+ensure_user_email_schema($pdo);
 photo_col($pdo);
 $id=(int)($_GET['id']??0);
 $isAdmin=($_SESSION['u']['role']??'')==='admin';
-$S=$pdo->prepare("SELECT * FROM students WHERE id=?");$S->execute([$id]);$st=$S->fetch();
+$S=$pdo->prepare("SELECT s.*,u.email FROM students s LEFT JOIN users u ON u.student_id=s.id AND u.role='student' WHERE s.id=? LIMIT 1");$S->execute([$id]);$st=$S->fetch();
 
 /* ---------- admin actions (then redirect so refresh won't resubmit) ---------- */
 if($st&&$isAdmin&&$_SERVER['REQUEST_METHOD']==='POST'){
@@ -49,6 +50,8 @@ $genders=['Male','Female'];if($st['gender']!==''&&!in_array($st['gender'],$gende
 .pg .hero2 .qr{padding:14px;border-radius:20px;box-shadow:0 14px 30px -18px rgba(15,61,38,.4)}
 .pg .hero2 .qcap{display:flex;flex-direction:column;align-items:center;gap:8px}
 .pg .hero2 .qcap small{color:var(--mute);font-size:12px;font-weight:600}
+.pg .hero2 .pass-download-quick{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;margin:4px 0 0;padding:0 12px;font-size:12px}
+.pg .hero2 .pass-download-status{max-width:180px;text-align:center}
 .pg .hero2 h2{margin:0;font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-.03em}
 .pg .hero2 .chips{justify-content:flex-start;margin:10px 0 14px}
 .pg .where{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
@@ -133,7 +136,12 @@ $genders=['Male','Female'];if($st['gender']!==''&&!in_array($st['gender'],$gende
       <span class="<?=$inside?'':'muted'?>">Library today: <?=$inside?'Inside (timed in '.date('h:i A',strtotime($att[0]['time_in'])).')':'Not in library'?></span>
     </div>
   </div>
-  <div class="qcap"><div class="qr" data-code="STU:<?=h($st['student_no'])?>"></div><small>Student QR code</small></div>
+  <div class="qcap">
+    <div class="qr" data-code="STU:<?=h($st['student_no'])?>"></div>
+    <small>Student QR code</small>
+    <button type="button" class="pass-download-quick" onclick="downloadLibraryPass(this)"><?=ic('download')?>Download Pass Image</button>
+    <small class="pass-download-status" role="status" aria-live="polite"></small>
+  </div>
 </div>
 
 <?php library_pass($st,setting($pdo,'library_logo','assets/rhsti-school-logo.jpg'),setting($pdo,'library_name','eSmartlib'),setting($pdo,'school_name','RHSTI Library')); ?>
@@ -201,7 +209,7 @@ $genders=['Male','Female'];if($st['gender']!==''&&!in_array($st['gender'],$gende
   </table></div>
 </div>
 
-<!-- History + attendance -->
+<!-- History + attendance --> 
 <div class="two">
   <div class="card">
     <div class="ph"><span class="pico"><?=ic('return')?></span><div><h3>Borrowing history</h3></div></div>
