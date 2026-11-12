@@ -1,4 +1,5 @@
-<?php require 'config.php';require 'ui2026.php';auth(['admin']);
+<?php header('Location: account.php?tab=settings');exit;
+require 'config.php';require 'Ui2026.PHP';auth(['admin']);
 settings_init($pdo);
 $me=(int)$_SESSION['u']['id'];
 
@@ -9,9 +10,50 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     setting_set($pdo,'loan_days',max(1,min(60,(int)$_POST['loan_days'])));
     $msg='Loan rules saved.';
   }elseif(isset($_POST['info'])){
-    setting_set($pdo,'library_name',trim($_POST['library_name']??''));
-    setting_set($pdo,'school_name',trim($_POST['school_name']??''));
-    $msg='Library info saved.';
+    $newLibraryName=trim($_POST['library_name']??'');
+    $newSchoolName=trim($_POST['school_name']??'');
+    if($newLibraryName===''||$newSchoolName===''){$ok=false;$msg='System name and school/library name are both required.';}
+    elseif(strlen($newLibraryName)>60||strlen($newSchoolName)>80){$ok=false;$msg='System name must be 60 characters or less and school/library name 80 characters or less.';}
+    else{
+      setting_set($pdo,'library_name',$newLibraryName);
+      setting_set($pdo,'school_name',$newSchoolName);
+      $msg='Library info saved.';
+    }
+  }elseif(isset($_POST['logo_up'])){
+    $file=$_FILES['logo']??[];
+    $uploadError=$file['error']??UPLOAD_ERR_NO_FILE;
+    if($uploadError===UPLOAD_ERR_NO_FILE){$ok=false;$msg='Choose a logo image first.';}
+    elseif($uploadError===UPLOAD_ERR_INI_SIZE||$uploadError===UPLOAD_ERR_FORM_SIZE){$ok=false;$msg='The logo is too large for the server.';}
+    elseif($uploadError!==UPLOAD_ERR_OK){$ok=false;$msg='Logo upload failed. Please try again.';}
+    elseif(($file['size']??0)>2*1024*1024){$ok=false;$msg='The logo must be 2 MB or smaller.';}
+    else{
+      $image=@getimagesize($file['tmp_name']??'');
+      $extensions=[IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_WEBP=>'webp'];
+      if(!$image||!isset($extensions[$image[2]])){$ok=false;$msg='Use a JPG, PNG, or WEBP image for the logo.';}
+      else{
+        $dir=__DIR__.'/uploads/library';
+        if(!is_dir($dir)&&!@mkdir($dir,0755,true)){$ok=false;$msg='Cannot create the logo upload folder. Check hosting folder permissions.';}
+        elseif(!is_writable($dir)){$ok=false;$msg='The logo upload folder is not writable. Check hosting folder permissions.';}
+        else{
+          $name='logo_'.bin2hex(random_bytes(8)).'.'.$extensions[$image[2]];
+          $destination=$dir.'/'.$name;
+          $protection=$dir.'/.htaccess';
+          if(!is_file($protection)&&file_put_contents($protection,"<FilesMatch \"\\.(php|phtml|phar)$\">\nRequire all denied\n</FilesMatch>\n")===false){$ok=false;$msg='Could not secure the logo upload folder. Check hosting folder permissions.';}
+          elseif(!is_uploaded_file($file['tmp_name']??'')||!move_uploaded_file($file['tmp_name'],$destination)){$ok=false;$msg='Could not save the logo. Please try again.';}
+          else{
+            $oldLogo=setting($pdo,'library_logo','');
+            setting_set($pdo,'library_logo','uploads/library/'.$name);
+            if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);
+            $msg='Library logo updated.';
+          }
+        }
+      }
+    }
+  }elseif(isset($_POST['logo_rm'])){
+    $oldLogo=setting($pdo,'library_logo','');
+    setting_set($pdo,'library_logo','');
+    if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);
+    $msg='Library logo removed.';
   }elseif(isset($_POST['mypw'])){
     $q=$pdo->prepare("SELECT password FROM users WHERE id=?");$q->execute([$me]);
     if(!password_verify($_POST['old']??'',(string)$q->fetchColumn())){$ok=false;$msg='Current password is incorrect.';}
@@ -44,30 +86,38 @@ $maxLoans=(int)setting($pdo,'max_loans',defined('MAX_LOANS')?MAX_LOANS:3);
 $loanDays=(int)setting($pdo,'loan_days',7);
 $libName=setting($pdo,'library_name','eSmartlib');
 $schoolName=setting($pdo,'school_name','RHSTI Library');
+$logoPath=setting($pdo,'library_logo','assets/rhsti-school-logo.jpg');
+$logoAllowed=$logoPath==='assets/rhsti-school-logo.jpg'||(strpos($logoPath,'uploads/library/')===0&&strpos($logoPath,'..')===false);
+$logoFile=$logoAllowed&&is_file(__DIR__.'/'.$logoPath)?$logoPath:'';
 $staff=$pdo->query("SELECT id,username,role FROM users WHERE role IN ('admin','librarian') ORDER BY role,username")->fetchAll();
 $studentAccts=(int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='student'")->fetchColumn();
 head('Settings');ui_css();?>
 <style>
-.pg .split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
-@media(max-width:900px){.pg .split{grid-template-columns:1fr}}
+.pg .settings-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media(max-width:900px){.pg .settings-split{grid-template-columns:1fr}}
 .pg label.fl{display:block}
-.pg label.fl>span{display:block;font-size:12.5px;font-weight:700;color:var(--mute);margin:0 0 6px}
+.pg label.fl>span{display:block;font-size:14px;font-weight:700;color:var(--mute);margin:0 0 7px}
 .pg .note.bad{background:var(--redbg);border-color:#f9c2bd;color:var(--red)}
-.pg .help{color:var(--mute);font-size:12.5px;margin:6px 0 0}
+.pg .help{color:var(--mute);font-size:14px;margin:7px 0 0}
 .pg .rowact{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 .pg .rowact form{display:flex;gap:8px;margin:0}
-.pg .rowact input{height:38px;width:170px;font-size:13px}
-.pg .rowact button{height:38px;padding:0 14px;font-size:13px}
+.pg .rowact input{height:44px;width:190px;font-size:14px}
+.pg .rowact button{height:44px;padding:0 16px;font-size:14px}
 .pg .pill.admin{background:#dbeafe;color:#1d4ed8}.pg .pill.librarian{background:#d1fae5;color:#065f46}
 .pg .you{margin-left:8px;font-size:11px;font-weight:700;color:var(--g);background:var(--leaf);padding:2px 8px;border-radius:999px}
 .pg .stat3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
+.pg .logo-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}
+.pg .logo-form .fact{margin:0}
+.pg .logo-preview{display:flex;align-items:center;gap:14px;margin:0 0 16px;color:var(--mute);font-size:14px;font-weight:700}
+.pg .logo-preview img{width:88px;height:72px;object-fit:contain;padding:8px;border:1px solid var(--line);border-radius:12px;background:#fff}
 @media(max-width:640px){.pg .rowact{justify-content:flex-start}.pg .rowact input{width:100%}.pg .rowact form{width:100%}}
+@media(max-width:640px){.pg .logo-form{grid-template-columns:1fr}.pg .logo-form .fact button{width:100%}}
 </style>
 <div class="pg">
 
 <?php if($flash)echo '<div class="note'.($flash[0]?'':' bad').'">'.ic('info').'<span>'.h($flash[1]).'</span></div>';?>
 
-<div class="split">
+<div class="settings-split">
   <!-- Loan rules -->
   <form method="post" class="card">
     <div class="ph"><span class="pico"><?=ic('book')?></span><div><h3>Loan rules</h3><p>How many books and for how long.</p></div></div>
@@ -88,6 +138,17 @@ head('Settings');ui_css();?>
     </div>
     <div class="fact"><button name="info" value="1"><?=ic('plus')?>Save info</button></div>
   </form>
+</div>
+
+<div class="card">
+  <div class="ph"><span class="pico"><?=ic('upload')?></span><div><h3>Library logo</h3><p>Upload a logo for student library passes. JPG, PNG, or WEBP; maximum 2 MB.</p></div></div>
+  <?php if($logoFile):?><div class="logo-preview"><img src="<?=h($logoFile)?>?v=<?=filemtime(__DIR__.'/'.$logoFile)?>" alt="Current library logo"><span>Current logo</span></div><?php endif;?>
+  <form method="post" enctype="multipart/form-data" class="logo-form">
+    <input type="hidden" name="MAX_FILE_SIZE" value="2097152">
+    <label class="fl"><span>Choose logo image</span><input type="file" name="logo" accept="image/jpeg,image/png,image/webp" required></label>
+    <div class="fact"><button name="logo_up" value="1"><?=ic('upload')?>Upload logo</button></div>
+  </form>
+  <?php if($logoFile):?><form method="post" class="fact"><button class="ghost" name="logo_rm" value="1" formnovalidate><?=ic('trash')?>Remove logo</button></form><?php endif;?>
 </div>
 
 <!-- My password -->
