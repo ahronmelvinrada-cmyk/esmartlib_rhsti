@@ -262,6 +262,7 @@
       }
       
       function foot($scripts=''){
+          echo '<script src="assets/text-size.js?v='.filemtime(__DIR__.'/assets/text-size.js').'"></script>';
           $chat='';
           if(!empty($_SESSION['u']['id'])){
             ensure_chat_schema($GLOBALS['pdo']);
