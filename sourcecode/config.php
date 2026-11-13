@@ -210,13 +210,14 @@
       
       function head($title){
         $p=basename($_SERVER['PHP_SELF']);$role=$_SESSION['u']['role']??'';
-        $notificationCount=0;
+        $notificationCounts=['resets'=>0,'bookings'=>0];
         if($role==='admin'){
           ensure_recovery_schema($GLOBALS['pdo']);
           ensure_book_request_schema($GLOBALS['pdo']);
-          $notificationCount=(int)$GLOBALS['pdo']->query("SELECT
-            (SELECT COUNT(*) FROM password_reset_codes WHERE code_hash IS NULL AND requested_at>=DATE_SUB(NOW(),INTERVAL 1 DAY))
-            +(SELECT COUNT(*) FROM book_requests WHERE status='pending')")->fetchColumn();
+          $counts=$GLOBALS['pdo']->query("SELECT
+            (SELECT COUNT(*) FROM password_reset_codes WHERE code_hash IS NULL AND requested_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)) AS resets,
+            (SELECT COUNT(*) FROM book_requests WHERE status='pending') AS bookings")->fetch(PDO::FETCH_ASSOC);
+          if($counts)$notificationCounts=array_map('intval',$counts);
         }
         $libraryName=function_exists('setting')?setting($GLOBALS['pdo'],'library_name','eSmartlib'):'eSmartlib';
         $schoolName=function_exists('setting')?setting($GLOBALS['pdo'],'school_name','RHSTI Library'):'RHSTI Library';
@@ -240,8 +241,15 @@
         
         $nav=['index.php'=>['Dashboard','dashboard'],'students.php'=>['Students','users']];
         if($role==='admin'||$role==='librarian')$nav['teachers.php']=['Teachers','users'];
-        $nav+=['books.php'=>['Books','books'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Attendance','clock'],'history.php'=>['History','history'],'account.php'=>['My Account','user-circle']];
-        if($role==='admin')$nav['account.php']=['Account & Requests','send'];
+        $nav+=['books.php'=>['Books','books'],'borrow.php'=>['Borrow','out'],'return.php'=>['Return','in'],'attendance.php'=>['Attendance','clock'],'history.php'=>['History','history']];
+        if($role==='admin'){
+          $nav['account.php?tab=profile']=['My Account','user-circle'];
+          $nav['account.php?tab=bookings']=['Requests','send'];
+          $nav['account.php?tab=resets']=['Password resets','clipboard-list'];
+          $nav['account.php?tab=settings']=['Settings','settings'];
+        }else{
+          $nav['account.php']=['My Account','user-circle'];
+        }
         if($role=='student'){
           $nav=$p==='student.php'
             ? ['#dashboard'=>['My Dashboard','dashboard'],'#pass'=>['My Pass','id-card'],'#booking'=>['Booking','send'],'#borrowed'=>['My Borrowed','books'],'#history'=>['My History','history'],'#attendance'=>['Attendance','clock'],'account.php'=>['My Profile','user-circle']]
@@ -255,8 +263,12 @@
 
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' - '.h($libraryName).' | '.h($schoolName).'</title>'.pwa_head_assets().'<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="assets/style.css?v='.filemtime(__DIR__.'/assets/style.css').'"></head><body><div class="app'.($role==='student'?' student-app'.($p==='student.php'?' student-dashboard':''):($role==='teacher'?' teacher-app':($role==='admin'||$role==='librarian'?' staff-app':''))).'"><aside><div class="brand">'.$brandMark.'<span>'.h($libraryName).'<small>'.h($schoolName).'</small></span></div>'.($role==='student'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='teacher'?'<a class="student-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':($role==='admin'||$role==='librarian'?'<a class="staff-logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a>':'' ))).'<nav>';
         foreach($nav as $f=>[$l,$i]){
-          $active=($p==='account.php'&&strpos($f,'account.php')===0)||($p===basename(parse_url($f,PHP_URL_PATH)?:$f)&&(!$f||$f[0]!=='#'))||($p==='student.php'&&$f==='#dashboard');
-          echo '<a href="'.$f.'"'.($active?' class="on"':'').'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$I[$i].'</svg>'.$l.($role==='admin'&&$l==='Account & Requests'&&$notificationCount>0?'<i class="nav-alert-dot" aria-label="'.$notificationCount.' pending requests"></i>':'').'</a>';
+          $navPath=basename(parse_url($f,PHP_URL_PATH)?:$f);
+          $navQuery=[];parse_str(parse_url($f,PHP_URL_QUERY)??'',$navQuery);
+          $currentTab=$_GET['tab']??'profile';
+          $active=($p===$navPath&&($navPath!=='account.php'||$role!=='admin'||($navQuery['tab']??'profile')===$currentTab))||($p==='student.php'&&$f==='#dashboard');
+          $badgeCount=$f==='account.php?tab=bookings'?$notificationCounts['bookings']:($f==='account.php?tab=resets'?$notificationCounts['resets']:0);
+          echo '<a href="'.$f.'"'.($active?' class="on"':'').'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$I[$i].'</svg>'.$l.($badgeCount>0?'<i class="nav-alert-dot" aria-label="'.$badgeCount.' pending requests"></i>':'').'</a>';
         }
         echo '</nav><div class="who"><div class="who-info"><b>'.h($_SESSION['u']['username']).'</b><small><span class="who-dot"></span>'.h(ucfirst($role)).' account</small></div><div class="who-actions"><button type="button" class="tg" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l-1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button><a class="logout" href="logout.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Log out</span></a></div></div></aside><main><h1>'.h($title).'</h1>';
       }
