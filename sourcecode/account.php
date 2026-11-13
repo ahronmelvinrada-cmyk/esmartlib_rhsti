@@ -8,7 +8,7 @@ $isStaff=in_array($role,['admin','librarian'],true);
 $isAdmin=$role==='admin';
 $isTeacher=$role==='teacher';
 $tab=$_GET['tab']??'profile';
-if(!in_array($tab,['profile','settings','resets','bookings'],true)||(!$isAdmin&&$tab!=='profile'))$tab='profile';
+if(!in_array($tab,['profile','appearance','settings','resets','bookings'],true)||(!$isAdmin&&!in_array($tab,['profile','appearance'],true)))$tab='profile';
 if($isAdmin){settings_init($pdo);ensure_recovery_schema($pdo);ensure_book_request_schema($pdo);ensure_student_account_status_schema($pdo);}
 
 /* ---------- actions (post -> redirect, so refresh won't resubmit) ---------- */
@@ -57,13 +57,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $name='logo_'.bin2hex(random_bytes(8)).'.'.$extensions[$image[2]];$destination=$dir.'/'.$name;$protection=$dir.'/.htaccess';
             if(!is_file($protection)&&file_put_contents($protection,"<FilesMatch \"\\.(php|phtml|phar)$\">\nRequire all denied\n</FilesMatch>\n")===false){$ok=false;$msg='Could not secure the logo upload folder. Check hosting folder permissions.';}
             elseif(!is_uploaded_file($file['tmp_name']??'')||!move_uploaded_file($file['tmp_name'],$destination)){$ok=false;$msg='Could not save the logo. Please try again.';}
-            else{$oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','uploads/library/'.$name);if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(_DIR_.'/'.$oldLogo))@unlink(_DIR_.'/'.$oldLogo);$msg='Library logo updated.';}
+            else{$oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','uploads/library/'.$name);if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);$msg='Library logo updated.';}
           }
         }
       }
     }elseif($action==='logo_rm'){
       $oldLogo=setting($pdo,'library_logo','');setting_set($pdo,'library_logo','');
-      if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(_DIR_.'/'.$oldLogo))@unlink(_DIR_.'/'.$oldLogo);
+      if($oldLogo&&strpos($oldLogo,'uploads/library/')===0&&strpos($oldLogo,'..')===false&&is_file(__DIR__.'/'.$oldLogo))@unlink(__DIR__.'/'.$oldLogo);
       $msg='Library logo removed.';
     }elseif($action==='addstaff'){
       $un=trim($_POST['username']??'');$pw=$_POST['password']??'';$staffRole=($_POST['role']??'')==='admin'?'admin':'librarian';
@@ -174,7 +174,7 @@ if($isAdmin){
     'school_name'=>setting($pdo,'school_name','RHSTI Library'),
     'logo_path'=>setting($pdo,'library_logo','assets/rhsti-school-logo.jpg')
   ];
-  $adminSettings['logo_file']=($adminSettings['logo_path']==='assets/rhsti-school-logo.jpg'||(strpos($adminSettings['logo_path'],'uploads/library/')===0&&strpos($adminSettings['logo_path'],'..')===false))&&is_file(_DIR_.'/'.$adminSettings['logo_path'])?$adminSettings['logo_path']:'';
+  $adminSettings['logo_file']=($adminSettings['logo_path']==='assets/rhsti-school-logo.jpg'||(strpos($adminSettings['logo_path'],'uploads/library/')===0&&strpos($adminSettings['logo_path'],'..')===false))&&is_file(__DIR__.'/'.$adminSettings['logo_path'])?$adminSettings['logo_path']:'';
   $adminSettings['staff']=$pdo->query("SELECT id,username,role FROM users WHERE role IN ('admin','librarian') ORDER BY role,username")->fetchAll();
   $adminSettings['student_accounts']=(int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='student'")->fetchColumn();
   $resetRequests=$pdo->query("SELECT r.user_id,r.requested_at,u.username,u.role FROM password_reset_codes r JOIN users u ON u.id=r.user_id WHERE r.code_hash IS NULL AND r.requested_at>=DATE_SUB(NOW(),INTERVAL 1 DAY) ORDER BY r.requested_at ASC LIMIT 100")->fetchAll();
@@ -195,7 +195,7 @@ $hasTeacherAccount=$role==='teacher'&&!empty($u['teacher_id']);
 if($hasTeacherAccount){ensure_teacher_schema($pdo);$t=$pdo->prepare("SELECT * FROM teachers WHERE id=?");$t->execute([$u['teacher_id']]);$teacher=$t->fetch();}
 $display=$st['name']??($teacher['name']??($u['username']??'User'));
 $teacherPhoto=$teacher['photo']??'';
-$av=$st?avatar($st,'xl'):($teacher&&teacher_photo_path_ok($teacherPhoto)&&is_file(_DIR_.'/'.$teacherPhoto)
+$av=$st?avatar($st,'xl'):($teacher&&teacher_photo_path_ok($teacherPhoto)&&is_file(__DIR__.'/'.$teacherPhoto)
   ?'<img class="pav xl" src="'.h($teacherPhoto).'" alt="'.h($display).'" loading="lazy">'
   :avatar(['name'=>$display],'xl'));
 $perm=[
@@ -204,7 +204,7 @@ $perm=[
   'student'=>'View your profile, borrowed books, attendance and QR code.',
   'teacher'=>'View your teacher pass and borrowing history.'
 ][$role]??'';
-head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='resets'?'Password resets':($tab==='bookings'?'Book requests':'Settings'))));ui_css();?>
+head($tab==='appearance'?'Appearance':($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='resets'?'Password resets':($tab==='bookings'?'Book requests':'Settings')))));ui_css();?>
 <style>
 .pg .note.bad{background:var(--redbg);border-color:#f9c2bd;color:var(--red)}
 .pg .acc{display:flex;gap:26px;align-items:center;flex-wrap:wrap;background:linear-gradient(135deg,#f3faf5,#fff 60%)}
@@ -253,19 +253,45 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 .pg .teacher-profile-photo input[type=file]{width:100%;padding:9px}
 .pg .teacher-profile-remove{display:inline-block;margin-top:4px}
 .pg .teacher-profile-remove button{height:42px}
+.pg .appearance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.pg .appearance-setting{padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--bg)}
+.pg .appearance-setting.wide{grid-column:1/-1}
+.pg .appearance-setting h3{margin:0;font-size:15px}
+.pg .appearance-setting p{margin:4px 0 14px;color:var(--mute);font-size:13px}
+.pg .appearance-dark{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.pg .appearance-dark p{margin:4px 0 0}
+.pg .appearance-switch{position:relative;display:inline-flex;flex:none;align-items:center}
+.pg .appearance-switch input{position:absolute;width:1px;height:1px;opacity:0}
+.pg .appearance-switch span{width:54px;height:30px;border-radius:99px;background:#a6b5aa;transition:background .2s;cursor:pointer}
+.pg .appearance-switch span:after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
+.pg .appearance-switch input:checked+span{background:var(--g)}
+.pg .appearance-switch input:checked+span:after{transform:translateX(24px)}
+.pg .appearance-switch input:focus-visible+span{outline:3px solid var(--g);outline-offset:3px}
+.pg .appearance-colors,.pg .appearance-choices{display:flex;flex-wrap:wrap;gap:12px}
+.pg .appearance-colors label,.pg .appearance-choices label{position:relative;cursor:pointer}
+.pg .appearance-colors input,.pg .appearance-choices input{position:absolute;width:1px;height:1px;opacity:0}
+.pg .appearance-colors span{display:grid;width:38px;height:38px;place-items:center;border:3px solid transparent;border-radius:50%;background:var(--swatch);color:#fff;font-size:17px}
+.pg .appearance-colors input:checked+span{border-color:var(--card);outline:2px solid var(--swatch)}
+.pg .appearance-colors input:focus-visible+span,.pg .appearance-choices input:focus-visible+span{outline:3px solid var(--g);outline-offset:3px}
+.pg .appearance-choices span{display:flex;min-width:58px;min-height:46px;align-items:center;justify-content:center;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-weight:700}
+.pg .appearance-choices input:checked+span{border-color:var(--g);box-shadow:0 0 0 2px var(--g);color:var(--g)}
+.pg .appearance-style span{min-width:104px;min-height:78px;flex-direction:column;gap:7px}
+.pg .appearance-style span:before{content:"";width:48px;height:24px;border:1px solid var(--line);border-radius:10px;background:var(--leaf)}
+.pg .appearance-style input[value="soft"]+span:before{border-radius:16px}
+.pg .appearance-style input[value="crisp"]+span:before{border-radius:3px}
+.pg .appearance-status{min-height:1.5em;margin:12px 0 0;color:var(--mute);font-size:13px}
 @media(max-width:900px){.pg .settings-split{grid-template-columns:1fr}}
 @media(max-width:640px){.pg .logo-form{grid-template-columns:1fr}.pg .settings-actions,.pg .settings-actions form{width:100%}.pg .settings-actions input{flex:1;min-width:0}}
+@media(max-width:640px){.pg .appearance-grid{grid-template-columns:1fr}.pg .appearance-setting.wide{grid-column:auto}}
 </style>
 <div class="pg">
 
 <?php if($flash)echo '<div class="note'.($flash[0]?'':' bad').'">'.ic('info').'<span>'.h($flash[1]).'</span></div>';?>
-<?php if($isAdmin):?>
 <nav class="account-tabs" aria-label="Account sections">
-  <?php foreach(['profile'=>'My account','settings'=>'Settings','resets'=>'Password resets','bookings'=>'Book requests'] as $key=>$label):$tabIcon=['profile'=>'user-circle','settings'=>'settings','resets'=>'clipboard-list','bookings'=>'send'][$key];?>
+  <?php $accountTabs=['profile'=>'My account','appearance'=>'Appearance'];if($isAdmin)$accountTabs+=['settings'=>'Settings','resets'=>'Password resets','bookings'=>'Book requests'];foreach($accountTabs as $key=>$label):$tabIcon=['profile'=>'user-circle','appearance'=>'settings','settings'=>'settings','resets'=>'clipboard-list','bookings'=>'send'][$key];?>
   <a class="<?=$tab===$key?'on':''?>" href="account.php?tab=<?=$key?>"><?=ic($tabIcon)?><?=h($label)?><?=($key==='resets'&&count($resetRequests)>0)||($key==='bookings'&&(int)($bookingCounts['pending']??0)>0)?'<i class="nav-alert-dot" aria-label="Pending requests"></i>':''?></a>
   <?php endforeach;?>
 </nav>
-<?php endif;?>
 
 <?php if($tab==='profile'):?>
 <!-- Profile -->
@@ -341,6 +367,61 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
     <div class="fact"><button name="pw" value="1">Update password</button></div>
   </form>
 </div>
+<?php elseif($tab==='appearance'):?>
+<section class="card">
+  <div class="ph"><span class="pico"><?=ic('settings')?></span><div><h3>Appearance</h3><p>Personalize how eSmartLib looks on this browser.</p></div></div>
+  <div class="appearance-grid">
+    <div class="appearance-setting appearance-dark wide">
+      <div><h3>Dark mode</h3><p>Choose a darker look that is easier on the eyes.</p></div>
+      <label class="appearance-switch"><input type="checkbox" id="appearance-dark-mode" aria-label="Enable dark mode"><span aria-hidden="true"></span></label>
+    </div>
+    <div class="appearance-setting">
+      <h3>Theme color</h3><p>Choose your preferred accent color.</p>
+      <div class="appearance-colors" role="radiogroup" aria-label="Theme color">
+        <label title="Green"><input type="radio" name="appearance-accent" value="green" aria-label="Green"><span style="--swatch:#1f7a46"></span></label>
+        <label title="Blue"><input type="radio" name="appearance-accent" value="blue" aria-label="Blue"><span style="--swatch:#2563eb"></span></label>
+        <label title="Pink"><input type="radio" name="appearance-accent" value="pink" aria-label="Pink"><span style="--swatch:#db2777"></span></label>
+        <label title="Teal"><input type="radio" name="appearance-accent" value="teal" aria-label="Teal"><span style="--swatch:#0f9888"></span></label>
+        <label title="Orange"><input type="radio" name="appearance-accent" value="orange" aria-label="Orange"><span style="--swatch:#ea580c"></span></label>
+        <label title="Purple"><input type="radio" name="appearance-accent" value="purple" aria-label="Purple"><span style="--swatch:#7c3aed"></span></label>
+        <label title="Red"><input type="radio" name="appearance-accent" value="red" aria-label="Red"><span style="--swatch:#dc2626"></span></label>
+        <label title="Indigo"><input type="radio" name="appearance-accent" value="indigo" aria-label="Indigo"><span style="--swatch:#4f46e5"></span></label>
+        <label title="Cyan"><input type="radio" name="appearance-accent" value="cyan" aria-label="Cyan"><span style="--swatch:#0891b2"></span></label>
+        <label title="Amber"><input type="radio" name="appearance-accent" value="amber" aria-label="Amber"><span style="--swatch:#d97706"></span></label>
+      </div>
+    </div>
+    <div class="appearance-setting">
+      <h3>Text size</h3><p>Adjust text throughout the system without zooming the page.</p>
+      <div class="appearance-choices" role="radiogroup" aria-label="Text size">
+        <label title="Small"><input type="radio" name="appearance-text-size" value="small" aria-label="Small"><span style="font-size:12px">Aa</span></label>
+        <label title="Normal"><input type="radio" name="appearance-text-size" value="normal" aria-label="Normal"><span style="font-size:15px">Aa</span></label>
+        <label title="Large"><input type="radio" name="appearance-text-size" value="large" aria-label="Large"><span style="font-size:18px">Aa</span></label>
+        <label title="Extra large"><input type="radio" name="appearance-text-size" value="x-large" aria-label="Extra large"><span style="font-size:21px">Aa</span></label>
+      </div>
+    </div>
+    <div class="appearance-setting wide">
+      <h3>Font style</h3><p>Choose the font used throughout eSmartLib on this browser.</p>
+      <div class="appearance-choices appearance-fonts" role="radiogroup" aria-label="Font style">
+        <label><input type="radio" name="appearance-font-family" value="jakarta" aria-label="Plus Jakarta Sans"><span style="font-family:'Plus Jakarta Sans',sans-serif">Plus Jakarta</span></label>
+        <label><input type="radio" name="appearance-font-family" value="arial" aria-label="Arial"><span style="font-family:Arial,sans-serif">Arial</span></label>
+        <label><input type="radio" name="appearance-font-family" value="verdana" aria-label="Verdana"><span style="font-family:Verdana,sans-serif">Verdana</span></label>
+        <label><input type="radio" name="appearance-font-family" value="georgia" aria-label="Georgia"><span style="font-family:Georgia,serif">Georgia</span></label>
+        <label><input type="radio" name="appearance-font-family" value="tahoma" aria-label="Tahoma"><span style="font-family:Tahoma,sans-serif">Tahoma</span></label>
+        <label><input type="radio" name="appearance-font-family" value="trebuchet" aria-label="Trebuchet MS"><span style="font-family:'Trebuchet MS',sans-serif">Trebuchet</span></label>
+      </div>
+    </div>
+    <div class="appearance-setting wide">
+      <h3>UI style</h3><p>Choose the shape of cards and controls.</p>
+      <div class="appearance-choices appearance-style" role="radiogroup" aria-label="UI style">
+        <label><input type="radio" name="appearance-ui-style" value="rounded" aria-label="Rounded"><span>Rounded</span></label>
+        <label><input type="radio" name="appearance-ui-style" value="soft" aria-label="Soft"><span>Soft</span></label>
+        <label><input type="radio" name="appearance-ui-style" value="crisp" aria-label="Crisp"><span>Crisp</span></label>
+      </div>
+    </div>
+  </div>
+  <p class="appearance-status" id="appearance-status" role="status" aria-live="polite"></p>
+  <button type="button" class="ghost" id="appearance-reset">Reset to default</button>
+</section>
 <?php elseif($isAdmin&&$tab==='settings'):?>
 <div class="settings-split">
   <form method="post" class="card">
@@ -362,7 +443,7 @@ head($role==='student'?'My Profile':($tab==='profile'?'My Account':($tab==='rese
 </div>
 <div class="card">
   <div class="ph"><span class="pico"><?=ic('upload')?></span><div><h3>Library logo</h3><p>JPG, PNG, or WEBP; maximum 2 MB.</p></div></div>
-  <?php if($adminSettings['logo_file']):?><div class="logo-preview"><img src="<?=h($adminSettings['logo_file'])?>?v=<?=filemtime(_DIR_.'/'.$adminSettings['logo_file'])?>" alt="Current library logo"><span>Current library logo</span></div><?php endif;?>
+  <?php if($adminSettings['logo_file']):?><div class="logo-preview"><img src="<?=h($adminSettings['logo_file'])?>?v=<?=filemtime(__DIR__.'/'.$adminSettings['logo_file'])?>" alt="Current library logo"><span>Current library logo</span></div><?php endif;?>
   <form method="post" enctype="multipart/form-data" class="logo-form">
     <input type="hidden" name="admin_action" value="logo_up"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="MAX_FILE_SIZE" value="2097152">
     <label class="fl"><span>Choose logo image</span><input type="file" name="logo" accept="image/jpeg,image/png,image/webp" required></label><div class="fact"><button>Upload logo</button></div>
