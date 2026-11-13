@@ -131,12 +131,13 @@ head('My Dashboard');ui_css();?>
 <?php if($m)echo '<div class="note'.(in_array($m,['Password changed.','Profile photo updated.','Profile photo removed.','Your booking request was sent to the library admin.','Booking request cancelled.'],true)?'':' bad').'">'.ic('info').'<span>'.h($m).'</span></div>';?>
 
 <nav class="student-bottom-nav" aria-label="Student dashboard sections">
-  <a href="#dashboard" class="active"><?=ic('dashboard')?><span> Dashboard</span></a>
-  <a href="#pass"><?=ic('id-card')?><span>Library Pass</span></a>
+  <a href="#dashboard" class="active" aria-label="Dashboard"><?=ic('dashboard')?><span>Home</span></a>
+  <a href="#pass" aria-label="Library Pass"><?=ic('id-card')?><span>Pass</span></a>
   <a href="#booking"><?=ic('send')?><span>Booking</span></a>
   <a href="#borrowed"><?=ic('books')?><span> Borrowed</span></a>
   <a href="#history"><?=ic('history')?><span>History</span></a>
-  <a href="#attendance"><?=ic('clock')?><span>Attendance</span></a>
+  <a href="#attendance" aria-label="Attendance"><?=ic('clock')?><span>Attend</span></a>
+  <a href="account.php?tab=profile" aria-label="My Profile"><?=ic('user-circle')?><span>Profile</span></a>
 </nav>
 
 <!-- Profile -->  
