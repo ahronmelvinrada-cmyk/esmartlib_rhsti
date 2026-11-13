@@ -33,14 +33,14 @@ $visitsTodayQuery = $pdo->prepare("SELECT COUNT(*) FROM attendance WHERE time_in
 $visitsTodayQuery->execute([$todayStart, $tomorrowStart]);
 $visitsToday = (int)$visitsTodayQuery->fetchColumn();
 
-/* ---------- Stat cards: label => [value, icon, tone] ---------- */
+/* ---------- Stat cards: label => [value, icon] ---------- */
 $c = [
-    'Book Titles'                   => [$bookTitles, 'book', 'emerald'],
-    'Registered Students'           => [$q("SELECT COUNT(*) FROM students"), 'users', 'blue'],
-    'Books Out'                     => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL"), 'out', 'amber'],
-    'Overdue Alerts'                => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()"), 'alert', 'rose'],
-    'Scanned Today'                 => [$q("SELECT COUNT(*) FROM borrowings WHERE DATE(borrowed_at) = CURDATE() OR DATE(returned_at) = CURDATE()"), 'scan', 'violet'],
-    'Library Visits Today'          => [$visitsToday, 'door', 'teal'],
+    'Book Titles'                   => [$bookTitles, 'book'],
+    'Registered Students'           => [$q("SELECT COUNT(*) FROM students"), 'users'],
+    'Books Out'                     => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL"), 'out'],
+    'Overdue Alerts'                => [$q("SELECT COUNT(*) FROM borrowings WHERE returned_at IS NULL AND due_date < CURDATE()"), 'alert'],
+    'Scanned Today'                 => [$q("SELECT COUNT(*) FROM borrowings WHERE DATE(borrowed_at) = CURDATE() OR DATE(returned_at) = CURDATE()"), 'scan'],
+    'Library Visits Today'          => [$visitsToday, 'door'],
 ];
 $sub = [
     'Book Titles'          => 'titles in catalog · '.$bookCopies.' total copies',
@@ -98,13 +98,13 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 .dash .dhero{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:none; border:0; padding:0; box-shadow:none; color:inherit; min-height:0}
 .dash .dhero p{margin:0; color:var(--muted); font-size:14px}
 .dash .live{display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
-  background:#ecfdf5; color:var(--brand-ink); font-weight:600; font-size:13px; border:1px solid #bbf7d0}
-.dash .live i{width:8px; height:8px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 0 rgba(16,185,129,.6); animation:ping 2s infinite}
-@keyframes ping{70%{box-shadow:0 0 0 8px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+  background:var(--leaf); color:var(--brand-ink); font-weight:600; font-size:13px; border:1px solid var(--g)}
+.dash .live i{width:8px; height:8px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 0 var(--leaf); animation:ping 2s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 8px var(--leaf)}100%{box-shadow:0 0 0 0 var(--leaf)}}
 
 /* Stat cards */
 .dash .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:16px}
-.dash .stat{position:relative; overflow:hidden; background:var(--surface); border:1px solid var(--line);
+.dash .stat{--tone:var(--g); --tone-bg:var(--leaf); position:relative; overflow:hidden; background:var(--surface); border:1px solid var(--line);
   border-radius:var(--radius); padding:20px; display:flex; flex-direction:column; gap:14px;
   transition:transform .25s, box-shadow .25s, border-color .25s}
 .dash .stat::after{content:""; position:absolute; inset:auto -30% -60% auto; width:160px; height:160px; border-radius:50%;
@@ -115,13 +115,7 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 .dash .stat .lbl{font-size:13px; color:var(--muted); font-weight:600}
 .dash .stat .num{font-size:38px; line-height:1; font-weight:800; letter-spacing:-.04em; margin-top:2px}
 .dash .stat .hint{font-size:12px; color:var(--muted); margin-top:6px}
-.dash .emerald{--tone:#059669; --tone-bg:#d1fae5}
-.dash .blue{--tone:#2563eb; --tone-bg:#dbeafe}
-.dash .amber{--tone:#d97706; --tone-bg:#fef3c7}
-.dash .rose{--tone:#e11d48; --tone-bg:#ffe4e6}
-.dash .violet{--tone:#7c3aed; --tone-bg:#ede9fe}
-.dash .teal{--tone:#0d9488; --tone-bg:#ccfbf1}
-.dash .rose.hot{border-color:#fecdd3}
+.dash .stat.hot{--tone:var(--red); --tone-bg:var(--redbg); border-color:var(--red)}
 
 /* Quick actions */
 .dash .actions{display:flex; flex-wrap:wrap; gap:10px}
@@ -129,7 +123,7 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
   font-weight:600; font-size:14px; color:var(--brand-ink); background:#fff; border:1px solid var(--line);
   transition:all .2s}
 .dash .act:hover{background:var(--brand-ink); color:#fff; border-color:var(--brand-ink); transform:translateY(-2px)}
-.dash .act.primary{background:linear-gradient(135deg,#2a9d5c,var(--g)); color:#fff; border:0; box-shadow:0 10px 24px -10px var(--g)}
+.dash .act.primary{background:var(--g); color:#fff; border:0; box-shadow:0 10px 24px -10px var(--g)}
 .dash .act.primary:hover{filter:brightness(1.08)}
 .dash .act span{opacity:.6; transition:transform .2s}
 .dash .act:hover span{transform:translateX(3px); opacity:1}
@@ -148,14 +142,14 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 .dash .tbl th{background:transparent; border-bottom:0; color:var(--muted)}
 .dash .tbl td{border-bottom:0}
 .dash .tbl th{text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; padding:6px 14px}
-.dash .tbl td{padding:14px; background:#f8fbf9; font-size:14px}
+.dash .tbl td{padding:14px; background:var(--bg); font-size:14px}
 .dash .tbl td:first-child{border-radius:14px 0 0 14px; font-weight:600}
 .dash .tbl td:last-child{border-radius:0 14px 14px 0}
-.dash .tbl tr:hover td{background:#effaf4}
+.dash .tbl tr:hover td{background:var(--leaf)}
 .dash .pill{display:inline-block; padding:4px 10px; border-radius:999px; background:#ffe4e6; color:#be123c; font-weight:700; font-size:12px}
 .dash .empty{text-align:center; padding:36px 10px; color:var(--muted)}
 .dash .empty b{display:block; color:var(--ink); font-size:16px; margin-bottom:4px}
-.dash .empty .ok{width:52px; height:52px; margin:0 auto 12px; border-radius:50%; background:#d1fae5; color:#059669; display:grid; place-items:center; font-size:24px}
+.dash .empty .ok{width:52px; height:52px; margin:0 auto 12px; border-radius:50%; background:var(--leaf); color:var(--g); display:grid; place-items:center; font-size:24px}
 
 @media (max-width:640px){ .dash .panel{padding:16px} .dash .tbl td:nth-child(2){display:none} .dash .tbl th:nth-child(2){display:none} }
 @media (prefers-reduced-motion:reduce){ .dash *{animation:none!important; transition:none!important} }
@@ -173,8 +167,8 @@ $overdue = $pdo->query("SELECT s.name, b.title, r.due_date, DATEDIFF(CURDATE(), 
 
   <!-- Stats -->
   <div class="stats">
-    <?php foreach ($c as $k => [$v, $ic, $tone]): ?>
-      <div class="stat <?= $tone ?> <?= ($k === 'Overdue Alerts' && $v > 0) ? 'hot' : '' ?>">
+    <?php foreach ($c as $k => [$v, $ic]): ?>
+      <div class="stat <?= ($k === 'Overdue Alerts' && $v > 0) ? 'hot' : '' ?>">
         <div class="ico"><?= $svg($ic) ?></div>
         <div>
           <div class="lbl"><?= h($k) ?></div>
@@ -259,16 +253,20 @@ $chartScript = '
   });
 
   var ctx = document.getElementById("ch").getContext("2d");
-  var g1 = ctx.createLinearGradient(0,0,0,320); g1.addColorStop(0,"#818cf8"); g1.addColorStop(1,"#4f46e5");
-  var g2 = ctx.createLinearGradient(0,0,0,320); g2.addColorStop(0,"#34d399"); g2.addColorStop(1,"#059669");
+  var chartTextScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--text-scale")) || 1;
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12 * chartTextScale;
+  var accent = getComputedStyle(document.documentElement).getPropertyValue("--g").trim();
+  var rgb = accent.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  var softAccent = rgb ? "rgba(" + parseInt(rgb[1],16) + "," + parseInt(rgb[2],16) + "," + parseInt(rgb[3],16) + ",.62)" : accent;
 
   var chart = new Chart(ctx, {
     type: "bar",
     data: {
       labels: ' . json_encode($labels) . ',
       datasets: [
-        { label: "Borrowed", data: ' . json_encode(array_column($days, 0)) . ', backgroundColor: g1, borderRadius: 10, borderSkipped: false, maxBarThickness: 34 },
-        { label: "Library visits", data: ' . json_encode(array_column($days, 1)) . ', backgroundColor: g2, borderRadius: 10, borderSkipped: false, maxBarThickness: 34 }
+        { label: "Borrowed", data: ' . json_encode(array_column($days, 0)) . ', backgroundColor: accent, borderRadius: 10, borderSkipped: false, maxBarThickness: 34 },
+        { label: "Library visits", data: ' . json_encode(array_column($days, 1)) . ', backgroundColor: softAccent, borderRadius: 10, borderSkipped: false, maxBarThickness: 34 }
       ]
     },
     options: {
